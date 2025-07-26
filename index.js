@@ -1,4 +1,4 @@
-// index.js (Truly Complete & Final - with all fixes and full implementation)
+// index.js (Final Version - Does not run setup on startup)
 const express = require('express');
 const axios = require('axios');
 const { execFile } = require('child_process');
@@ -10,7 +10,7 @@ const dbManager = require('./database');
 const stateManager = require('./state_manager');
 const userHandler = require('./user_handler');
 const adminHandler = require('./admin_handler');
-const secrets = require('./secrets.js'); // Using secrets.js for debugging
+const secrets = require('./secrets.js');
 
 const app = express();
 app.use(express.json());
@@ -152,44 +152,36 @@ async function handleMessage(sender_psid, webhook_event) {
 
 async function startServer() {
     try {
-        await dbManager.setupDatabase();
+        // We only initialize the client here. The setup script handles table creation.
+        dbManager.getDb(); 
+        console.log("Database client initialized. Bot is starting...");
 
-        // Health Check Route for hosting platforms
-        app.get('/', (req, res) => {
-            res.status(200).send('Bot is online and healthy.');
-        });
+        app.get('/', (req, res) => { res.status(200).send('Bot is online and healthy.'); });
 
-        // Facebook Webhook Verification
         app.get('/webhook', (req, res) => {
             const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
             if (mode === 'subscribe' && token === VERIFY_TOKEN) {
                 console.log("Webhook verified successfully!");
                 res.status(200).send(challenge);
             } else {
-                console.error("Webhook verification failed. Make sure your VERIFY_TOKEN in secrets.js matches the one in your Meta App.");
+                console.error("Webhook verification failed.");
                 res.sendStatus(403);
             }
         });
 
-        // Facebook Webhook Message Receiver
         app.post('/webhook', (req, res) => {
             if (req.body.object === 'page') {
                 req.body.entry.forEach(entry => {
                     const event = entry.messaging[0];
-                    if (event?.sender?.id && event.message) {
-                        handleMessage(event.sender.id, event);
-                    }
+                    if (event?.sender?.id && event.message) { handleMessage(event.sender.id, event); }
                 });
                 res.status(200).send('EVENT_RECEIVED');
-            } else {
-                res.sendStatus(404);
-            }
+            } else { res.sendStatus(404); }
         });
 
         const PORT = process.env.PORT || 3000;
-        const HOST = process.env.HOST || '0.0.0.0';
-
-        // Final Listener for hosting platforms
+        const HOST = '0.0.0.0';
+        
         app.listen(PORT, HOST, () => {
             console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`);
         });
