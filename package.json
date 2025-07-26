@@ -1,0 +1,14 @@
+{
+  "name": "turso-messenger-bot",
+  "version": "1.0.0",
+  "description": "A Messenger bot with a cloud-based Turso database.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.6.0",
+    "axios": "^1.7.2",
+    "express": "^4.19.2"
+  }
+}
