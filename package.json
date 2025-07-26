@@ -1,14 +1,14 @@
 {
-  "name": "render-turso-bot-stable",
+  "name": "render-turso-bot-final-fix",
   "version": "1.0.0",
-  "description": "A Messenger bot on Render with a Turso database using the official driver.",
+  "description": "A Messenger bot on Render with Turso using the better-sqlite3 driver.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@libsql/client": "^0.6.0",
     "axios": "^1.7.2",
+    "better-sqlite3": "^11.1.2",
     "express": "^4.19.2"
   }
 }
