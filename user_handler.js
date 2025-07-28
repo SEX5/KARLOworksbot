@@ -15,7 +15,7 @@ async function handleViewMods(sender_psid, sendText) {
     if (!mods || mods.length === 0) return sendText(sender_psid, "There are currently no mods available.\nTo return to the menu, type \"Menu\".");
     let response = "Available Mods:\n\n";
     mods.forEach(mod => { response += `Mod ${mod.id}: ${mod.description || 'N/A'}\nPrice: ${mod.price} PHP | Stock: ${mod.stock}\nImage: ${mod.image_url || 'N/A'}\n\n`; });
-    response += `To purchase, type "Want Mod [Number]" (e.g., Want Mod 1).\nTo return to the menu, type "Menu".`;
+    response += `To purchase, type the Mod [Number]"\nTo return to the menu, type "Menu".`;
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'awaiting_want_mod');
 }
