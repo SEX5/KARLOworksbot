@@ -1,49 +1,57 @@
-// database.js (Final Corrected Version - db.sync removed)
-const Database = require('better-sqlite3');
-const secrets = require('./secrets.js'); // Assumes you are using secrets.js for keys
+// database.js (Final Version for Neon/PostgreSQL)
+const { Pool } = require('pg');
+const secrets = require('./secrets.js');
 
-let db;
+let pool;
 
 function getDb() {
-    if (!db) {
-        db = new Database(':memory:', {
-            syncUrl: secrets.TURSO_DATABASE_URL,
-            authToken: secrets.TURSO_AUTH_TOKEN
+    if (!pool) {
+        pool = new Pool({
+            connectionString: secrets.NEON_DATABASE_URL,
+            ssl: {
+                rejectUnauthorized: false // Required for Neon
+            }
         });
-        console.log('Connected to Turso database via better-sqlite3.');
     }
-    return db;
+    return pool;
 }
 
 async function setupDatabase() {
+    const client = await getDb().connect();
     try {
-        const db = getDb(); // This now correctly initializes the connection and syncs.
-        db.exec(`CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY, gcash_number TEXT)`);
-        db.exec(`CREATE TABLE IF NOT EXISTS mods (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, price REAL DEFAULT 0, image_url TEXT)`);
-        db.exec(`CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, mod_id INTEGER NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, is_available BOOLEAN DEFAULT 1, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
-        db.exec(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
-        console.log('Database tables are ready on Turso.');
+        console.log('Connecting to Neon PostgreSQL database...');
+        await client.query('BEGIN');
+        await client.query(`CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY, gcash_number TEXT)`);
+        await client.query(`CREATE TABLE IF NOT EXISTS mods (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, price REAL DEFAULT 0, image_url TEXT)`);
+        await client.query(`CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, mod_id INTEGER NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, is_available BOOLEAN DEFAULT TRUE, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
+        await client.query(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
+        await client.query('COMMIT');
+        console.log('Database tables are ready on Neon.');
     } catch (error) {
-        console.error('FATAL: Could not set up Turso database:', error.message);
+        await client.query('ROLLBACK');
+        console.error('FATAL: Could not set up Neon database:', error.message);
         throw error;
+    } finally {
+        client.release();
     }
 }
 
-// --- Helper Functions (Now correct without the extra sync calls) ---
-function isAdmin(userId) { const db = getDb(); const stmt = db.prepare('SELECT * FROM admins WHERE user_id = ?'); return stmt.get(userId) || null; }
-function getAdminInfo() { const db = getDb(); const stmt = db.prepare('SELECT * FROM admins LIMIT 1'); return stmt.get() || null; }
-function updateAdminInfo(userId, gcashNumber) { const db = getDb(); const stmt = db.prepare('INSERT OR REPLACE INTO admins (user_id, gcash_number) VALUES (?, ?)'); stmt.run(userId, gcashNumber); }
-function getAllReferences() { const db = getDb(); const stmt = db.prepare('SELECT r.ref_number, r.user_id, m.name as mod_name FROM "references" r JOIN mods m ON r.mod_id = m.id ORDER BY r.timestamp DESC'); return stmt.all(); }
-function addBulkAccounts(modId, accounts) { const db = getDb(); const stmt = db.prepare('INSERT INTO accounts (mod_id, username, password) VALUES (?, ?, ?)'); db.transaction((accs) => { for (const acc of accs) stmt.run(modId, acc.username, acc.password); })(accounts); }
-function updateModDetails(modId, details) { const db = getDb(); const fields = Object.keys(details).map(k => `${k} = ?`).join(', '); const values = Object.values(details); const stmt = db.prepare(`UPDATE mods SET ${fields} WHERE id = ?`); stmt.run([...values, modId]); }
-function updateReferenceMod(ref, newModId) { const db = getDb(); const stmt = db.prepare('UPDATE "references" SET mod_id = ? WHERE ref_number = ?'); stmt.run(newModId, ref); }
-function addReference(ref, userId, modId) { const db = getDb(); const stmt = db.prepare('INSERT OR REPLACE INTO "references" (ref_number, user_id, mod_id) VALUES (?, ?, ?)'); stmt.run(ref, userId, modId); }
-function getMods() { const db = getDb(); const stmt = db.prepare('SELECT m.id, m.name, m.description, m.price, m.image_url, (SELECT COUNT(*) FROM accounts WHERE mod_id = m.id AND is_available = 1) as stock FROM mods m ORDER BY m.id'); return stmt.all(); }
-function getModById(modId) { const db = getDb(); const stmt = db.prepare('SELECT * FROM mods WHERE id = ?'); return stmt.get(modId) || null; }
-function getReference(refNumber) { const db = getDb(); const stmt = db.prepare('SELECT r.*, m.name as mod_name FROM "references" r JOIN mods m ON r.mod_id = m.id WHERE r.ref_number = ?'); return stmt.get(refNumber) || null; }
-function getAvailableAccount(modId) { const db = getDb(); const stmt = db.prepare('SELECT * FROM accounts WHERE mod_id = ? AND is_available = 1 LIMIT 1'); return stmt.get(modId) || null; }
-function claimAccount(accountId) { const db = getDb(); const stmt = db.prepare('UPDATE accounts SET is_available = 0 WHERE id = ?'); stmt.run(accountId); }
-function useClaim(refNumber) { const db = getDb(); const stmt = db.prepare('UPDATE "references" SET claims_used = claims_used + 1 WHERE ref_number = ?'); stmt.run(refNumber); }
-function addMod(id, name, description, price, imageUrl) { const db = getDb(); const stmt = db.prepare('INSERT INTO mods (id, name, description, price, image_url) VALUES (?, ?, ?, ?, ?)'); stmt.run(id, name, description, price, imageUrl); }
+// --- Helper Functions (rewritten for pg syntax) ---
+// Note: pg uses $1, $2 for placeholders, not ?
+async function isAdmin(userId) { const res = await getDb().query('SELECT * FROM admins WHERE user_id = $1', [userId]); return res.rows[0] || null; }
+async function getAdminInfo() { const res = await getDb().query('SELECT * FROM admins LIMIT 1'); return res.rows[0] || null; }
+async function updateAdminInfo(userId, gcashNumber) { await getDb().query('INSERT INTO admins (user_id, gcash_number) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET gcash_number = $2', [userId, gcashNumber]); }
+async function getAllReferences() { const res = await getDb().query('SELECT r.ref_number, r.user_id, r.claims_used, r.claims_max, m.name as mod_name FROM "references" r JOIN mods m ON r.mod_id = m.id ORDER BY r.timestamp DESC'); return res.rows; }
+async function addBulkAccounts(modId, accounts) { const client = await getDb().connect(); try { await client.query('BEGIN'); for (const acc of accounts) { await client.query('INSERT INTO accounts (mod_id, username, password) VALUES ($1, $2, $3)', [modId, acc.username, acc.password]); } await client.query('COMMIT'); } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); } }
+async function updateModDetails(modId, details) { const fields = Object.keys(details).map((k, i) => `${k} = $${i + 1}`).join(', '); const values = Object.values(details); await getDb().query(`UPDATE mods SET ${fields} WHERE id = $${values.length + 1}`, [...values, modId]); }
+async function updateReferenceMod(ref, newModId) { await getDb().query('UPDATE "references" SET mod_id = $1 WHERE ref_number = $2', [newModId, ref]); }
+async function addReference(ref, userId, modId) { await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id) VALUES ($1, $2, $3) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId]); }
+async function getMods() { const res = await getDb().query('SELECT m.id, m.name, m.description, m.price, m.image_url, (SELECT COUNT(*) FROM accounts WHERE mod_id = m.id AND is_available = TRUE) as stock FROM mods m ORDER BY m.id'); return res.rows; }
+async function getModById(modId) { const res = await getDb().query('SELECT * FROM mods WHERE id = $1', [modId]); return res.rows[0] || null; }
+async function getReference(refNumber) { const res = await getDb().query('SELECT r.*, m.name as mod_name FROM "references" r JOIN mods m ON r.mod_id = m.id WHERE r.ref_number = $1', [refNumber]); return res.rows[0] || null; }
+async function getAvailableAccount(modId) { const res = await getDb().query('SELECT * FROM accounts WHERE mod_id = $1 AND is_available = TRUE LIMIT 1', [modId]); return res.rows[0] || null; }
+async function claimAccount(accountId) { await getDb().query('UPDATE accounts SET is_available = FALSE WHERE id = $1', [accountId]); }
+async function useClaim(refNumber) { await getDb().query('UPDATE "references" SET claims_used = claims_used + 1 WHERE ref_number = $1', [refNumber]); }
+async function addMod(id, name, description, price, imageUrl) { await getDb().query('INSERT INTO mods (id, name, description, price, image_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT(id) DO NOTHING', [id, name, description, price, imageUrl]); }
 
 module.exports = { setupDatabase, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod };
