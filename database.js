@@ -1,4 +1,4 @@
-// database.js (Corrected with ON CONFLICT to prevent duplicate refs)
+// database.js (Corrected with claims_max = 3 for Neon)
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
@@ -44,12 +44,9 @@ async function addBulkAccounts(modId, accounts) { const client = await getDb().c
 async function updateModDetails(modId, details) { const fields = Object.keys(details).map((k, i) => `${k} = $${i + 1}`).join(', '); const values = Object.values(details); await getDb().query(`UPDATE mods SET ${fields} WHERE id = $${values.length + 1}`, [...values, modId]); }
 async function updateReferenceMod(ref, newModId) { await getDb().query('UPDATE "references" SET mod_id = $1 WHERE ref_number = $2', [newModId, ref]); }
 
-// --- THIS IS THE CORRECTED FUNCTION ---
-async function addReference(ref, userId, modId) {
-    // ON CONFLICT (ref_number) DO NOTHING will prevent duplicates and will not throw an error.
-    // Instead, it tells us if a row was successfully added or not.
-    const res = await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id) VALUES ($1, $2, $3) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId]);
-    // If rowCount is 0, it means the reference already existed and nothing was inserted.
+// --- THIS IS THE CORRECTED FUNCTION for claims_max and duplicate checking ---
+async function addReference(ref, userId, modId, claimsMax = 3) {
+    const res = await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId, claimsMax]);
     if (res.rowCount === 0) {
         throw new Error('Duplicate reference number');
     }
