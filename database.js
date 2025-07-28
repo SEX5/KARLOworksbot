@@ -1,4 +1,4 @@
-// database.js (Corrected for claims_max and simpler addReference)
+// database.js (With new deleteReference function)
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
@@ -36,6 +36,13 @@ async function setupDatabase() {
     }
 }
 
+// --- NEW FUNCTION TO DELETE A REFERENCE ---
+async function deleteReference(refNumber) {
+    const res = await getDb().query('DELETE FROM "references" WHERE ref_number = $1', [refNumber]);
+    return res.rowCount; // Will be 1 if deleted, 0 if not found
+}
+
+
 async function isAdmin(userId) { const res = await getDb().query('SELECT * FROM admins WHERE user_id = $1', [userId]); return res.rows[0] || null; }
 async function getAdminInfo() { const res = await getDb().query('SELECT * FROM admins LIMIT 1'); return res.rows[0] || null; }
 async function updateAdminInfo(userId, gcashNumber) { await getDb().query('INSERT INTO admins (user_id, gcash_number) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET gcash_number = $2', [userId, gcashNumber]); }
@@ -43,15 +50,7 @@ async function getAllReferences() { const res = await getDb().query('SELECT r.re
 async function addBulkAccounts(modId, accounts) { const client = await getDb().connect(); try { await client.query('BEGIN'); for (const acc of accounts) { await client.query('INSERT INTO accounts (mod_id, username, password) VALUES ($1, $2, $3)', [modId, acc.username, acc.password]); } await client.query('COMMIT'); } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); } }
 async function updateModDetails(modId, details) { const fields = Object.keys(details).map((k, i) => `${k} = $${i + 1}`).join(', '); const values = Object.values(details); await getDb().query(`UPDATE mods SET ${fields} WHERE id = $${values.length + 1}`, [...values, modId]); }
 async function updateReferenceMod(ref, newModId) { await getDb().query('UPDATE "references" SET mod_id = $1 WHERE ref_number = $2', [newModId, ref]); }
-
-// --- THIS IS THE CORRECTED FUNCTION ---
-async function addReference(ref, userId = 'ADMIN_ADDED', modId, claimsMax = 3) {
-    const res = await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId, claimsMax]);
-    if (res.rowCount === 0) {
-        throw new Error('Duplicate reference number');
-    }
-}
-
+async function addReference(ref, userId = 'ADMIN_ADDED', modId, claimsMax = 3) { const res = await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId, claimsMax]); if (res.rowCount === 0) { throw new Error('Duplicate reference number'); } }
 async function getMods() { const res = await getDb().query('SELECT m.id, m.name, m.description, m.price, m.image_url, (SELECT COUNT(*) FROM accounts WHERE mod_id = m.id AND is_available = TRUE) as stock FROM mods m ORDER BY m.id'); return res.rows; }
 async function getModById(modId) { const res = await getDb().query('SELECT * FROM mods WHERE id = $1', [modId]); return res.rows[0] || null; }
 async function getReference(refNumber) { const res = await getDb().query('SELECT r.*, m.name as mod_name FROM "references" r JOIN mods m ON r.mod_id = m.id WHERE r.ref_number = $1', [refNumber]); return res.rows[0] || null; }
@@ -61,4 +60,4 @@ async function useClaim(refNumber) { await getDb().query('UPDATE "references" SE
 async function addMod(id, name, description, price, imageUrl) { await getDb().query('INSERT INTO mods (id, name, description, price, image_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT(id) DO NOTHING', [id, name, description, price, imageUrl]); }
 async function getModsByPrice(price) { const res = await getDb().query('SELECT * FROM mods WHERE price BETWEEN $1 AND $2', [price - 0.01, price + 0.01]); return res.rows; }
 
-module.exports = { setupDatabase, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice };
+module.exports = { deleteReference, setupDatabase, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice };
