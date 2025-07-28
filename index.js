@@ -1,5 +1,6 @@
-// index.js (Truly Complete & Final - with messenger_api.js integration)
+// index.js (Complete & Final with Pagination Logic)
 const express = require('express');
+const axios = require('axios');
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -10,33 +11,32 @@ const userHandler = require('./user_handler.js');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
-const messengerApi = require('./messenger_api.js'); // The new, centralized API handler
 
 const app = express();
 app.use(express.json());
 
-const { VERIFY_TOKEN, ADMIN_ID } = secrets;
+const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
+
+async function sendText(psid, text) {
+    const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
+    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); }
+    catch (error) { console.error("Error sending message:", error.response?.data || error.message); }
+}
 
 async function handleReceiptSubmission(sender_psid, imageUrl) {
-    const sendText = messengerApi.sendText; // Use the centralized function
     await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
     try {
-        const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
+        const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
-
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
-
         const analysis = await paymentVerifier.sendGeminiRequest(image_b64);
         if (!analysis) throw new Error("AI analysis failed.");
-        
         const receiptsDir = path.join(__dirname, 'receipts');
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
         fs.writeFileSync(imagePath, imageBuffer);
-        
         await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
-
     } catch (error) {
         console.error("Error in handleReceiptSubmission:", error.message);
         await sendText(ADMIN_ID, `Admin Alert: Receipt analysis failed for user ${sender_psid}.`);
@@ -45,13 +45,12 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
 }
 
 async function handleMessage(sender_psid, webhook_event) {
-    const sendText = messengerApi.sendText; // Use the centralized function for all messaging
     const messageText = webhook_event.message?.text?.trim();
     const lowerCaseText = messageText?.toLowerCase();
 
     if (lowerCaseText === 'setup admin') {
-        if (sender_psid === secrets.ADMIN_ID) {
-            await dbManager.updateAdminInfo(sender_psid, "09123963204, Karl Abalunan");
+        if (sender_psid === ADMIN_ID) {
+            await dbManager.updateAdminInfo(sender_psid, "09xx-xxx-xxxx");
             await sendText(sender_psid, "✅ You have been successfully registered as the admin!");
             return adminHandler.showAdminMenu(sender_psid, sendText);
         } else {
@@ -81,6 +80,15 @@ async function handleMessage(sender_psid, webhook_event) {
     if (isAdmin) {
         const state = userStateObj?.state;
         if (state) {
+            if (state === 'viewing_references') {
+                const currentPage = userStateObj.page || 1;
+                if (lowerCaseText === '1') { // Next Page
+                    return adminHandler.handleViewReferences(sender_psid, sendText, currentPage + 1);
+                }
+                if (lowerCaseText === '2') { // Previous Page
+                    return adminHandler.handleViewReferences(sender_psid, sendText, currentPage - 1);
+                }
+            }
             switch (state) {
                 case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
@@ -92,7 +100,7 @@ async function handleMessage(sender_psid, webhook_event) {
             }
         }
         switch (lowerCaseText) {
-            case '1': return adminHandler.handleViewReferences(sender_psid, sendText);
+            case '1': return adminHandler.handleViewReferences(sender_psid, sendText, 1);
             case '2': return adminHandler.promptForBulkAccounts_Step1_ModId(sender_psid, sendText);
             case '3': return adminHandler.promptForEditMod(sender_psid, sendText);
             case '4': return adminHandler.promptForAddRef(sender_psid, sendText);
