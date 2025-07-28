@@ -1,7 +1,8 @@
-// admin_handler.js (Updated to show user names)
+// admin_handler.js (Complete & Final with Pagination)
 const db = require('./database');
 const stateManager = require('./state_manager');
-const messengerApi = require('./messenger_api.js');
+
+const REFERENCES_PER_PAGE = 10; // You can adjust this number
 
 async function showAdminMenu(sender_psid, sendText) {
     const menu = `Admin Menu:\nType 1: View reference numbers\nType 2: Add bulk accounts\nType 3: Edit mod details\nType 4: Add a reference number\nType 5: Edit admin info\nType 6: Edit reference numbers\nType 7: Add a new mod`;
@@ -9,21 +10,41 @@ async function showAdminMenu(sender_psid, sendText) {
     stateManager.clearUserState(sender_psid);
 }
 
-async function handleViewReferences(sender_psid, sendText) {
-    const refs = await db.getAllReferences();
-    if (!refs || refs.length === 0) {
+// --- NEW PAGINATED "Type 1" ---
+async function handleViewReferences(sender_psid, sendText, page = 1) {
+    const allRefs = await db.getAllReferences();
+    if (!allRefs || allRefs.length === 0) {
+        stateManager.clearUserState(sender_psid);
         return sendText(sender_psid, "No reference numbers have been submitted yet.\nTo return to the admin menu, type \"Menu\".");
     }
-    
-    let response = "Reference Numbers Log:\n\n";
-    for (const r of refs) {
-        const userName = await messengerApi.getUserProfile(r.user_id);
-        response += `Ref: ${r.ref_number}\nMod: ${r.mod_name}\nPurchased by: ${userName} (${r.user_id})\nClaims: ${r.claims_used}/${r.claims_max}\n\n`;
+
+    const totalPages = Math.ceil(allRefs.length / REFERENCES_PER_PAGE);
+    if (page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+
+    const startIndex = (page - 1) * REFERENCES_PER_PAGE;
+    const endIndex = startIndex + REFERENCES_PER_PAGE;
+    const refsToShow = allRefs.slice(startIndex, endIndex);
+
+    let response = `--- Reference Numbers (Page ${page}/${totalPages}) ---\n\n`;
+    refsToShow.forEach(r => {
+        response += `Ref: ${r.ref_number}\nMod: ${r.mod_name}\nUser: ${r.user_id}\nClaims: ${r.claims_used}/${r.claims_max}\n\n`;
+    });
+
+    response += `--- Options ---\n`;
+    if (page < totalPages) {
+        response += `Type '1' for Next Page\n`;
     }
-    
+    if (page > 1) {
+        response += `Type '2' for Previous Page\n`;
+    }
+    response += `Type 'Menu' to return to the main menu.`;
+
     await sendText(sender_psid, response);
+    stateManager.setUserState(sender_psid, 'viewing_references', { page: page });
 }
 
+// --- Type 2 ---
 async function promptForBulkAccounts_Step1_ModId(sender_psid, sendText) {
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
@@ -74,20 +95,17 @@ async function processBulkAccounts_Step3_SaveAccounts(sender_psid, text, sendTex
     }
 }
 
+// --- Type 3 ---
 async function promptForEditMod(sender_psid, sendText) {
-    await sendText(sender_psid, `Specify the mod to edit and the new details.\nFormat: Mod [ID], Description: New desc, Price: 150, Image: http://link`);
+    await sendText(sender_psid, `Specify mod and new details.\nFormat: Mod [ID], Description: New desc, Price: 150, Image: http://link`);
     stateManager.setUserState(sender_psid, 'awaiting_edit_mod');
 }
 
 async function processEditMod(sender_psid, text, sendText) {
     try {
         const parts = text.split(',').map(p => p.trim());
-        const modIdPart = parts.shift();
-        const modId = parseInt(modIdPart.replace('mod', '').trim());
-
-        if (isNaN(modId) || !(await db.getModById(modId))) {
-            throw new Error("Invalid Mod ID.");
-        }
+        const modId = parseInt(parts.shift().replace('mod', '').trim());
+        if (isNaN(modId) || !(await db.getModById(modId))) throw new Error("Invalid Mod ID.");
         const detailsToUpdate = {};
         parts.forEach(part => {
             const [key, ...valueParts] = part.split(':');
@@ -95,20 +113,19 @@ async function processEditMod(sender_psid, text, sendText) {
             const keyLower = key.trim().toLowerCase();
             if (['description', 'price', 'image_url'].includes(keyLower)) { detailsToUpdate[keyLower] = keyLower === 'price' ? parseFloat(value) : value; }
         });
-        if (Object.keys(detailsToUpdate).length === 0) {
-            throw new Error("No valid details to update were provided.");
-        }
+        if (Object.keys(detailsToUpdate).length === 0) throw new Error("No valid details provided.");
         await db.updateModDetails(modId, detailsToUpdate);
         await sendText(sender_psid, `Mod ${modId} updated successfully.`);
     } catch (e) {
-        await sendText(sender_psid, `Invalid format or Mod ID. Please try again.\nError: ${e.message}`);
+        await sendText(sender_psid, `Invalid format. Error: ${e.message}`);
     } finally {
         stateManager.clearUserState(sender_psid);
     }
 }
 
+// --- Type 4 ---
 async function promptForAddRef(sender_psid, sendText) {
-    await sendText(sender_psid, `Provide the 13-digit GCash ref, user ID, and mod ID.\nFormat: [ref_number], [user_id], Mod [ID]`);
+    await sendText(sender_psid, `Provide ref, user ID, and mod ID.\nFormat: [ref_number], [user_id], Mod [ID]`);
     stateManager.setUserState(sender_psid, 'awaiting_add_ref');
 }
 
@@ -132,6 +149,7 @@ async function processAddRef(sender_psid, text, sendText) {
     }
 }
 
+// --- Type 5 ---
 async function promptForEditAdmin(sender_psid, sendText) {
     await sendText(sender_psid, `Provide new admin info.\nFormat: Facebook ID: [New ID], GCash Number: [New Number]`);
     stateManager.setUserState(sender_psid, 'awaiting_edit_admin');
@@ -152,6 +170,7 @@ async function processEditAdmin(sender_psid, text, sendText) {
     }
 }
 
+// --- Type 6 ---
 async function promptForEditRef(sender_psid, sendText) {
     await sendText(sender_psid, `Provide the ref number and the new mod ID.\nFormat: [ref_number], Mod [ID]`);
     stateManager.setUserState(sender_psid, 'awaiting_edit_ref');
@@ -172,6 +191,7 @@ async function processEditRef(sender_psid, text, sendText) {
     }
 }
 
+// --- Type 7 ---
 async function promptForAddMod(sender_psid, sendText) {
     await sendText(sender_psid, `Provide the new mod details.\nFormat: ID, Name, Description, Price, ImageURL\n\nExample: 1, VIP Mod, Unlocks all features, 250, http://image.link/vip.png`);
     stateManager.setUserState(sender_psid, 'awaiting_add_mod');
@@ -192,4 +212,20 @@ async function processAddMod(sender_psid, text, sendText) {
     }
 }
 
-module.exports = { showAdminMenu, handleViewReferences, promptForBulkAccounts_Step1_ModId, processBulkAccounts_Step2_GetAccounts, processBulkAccounts_Step3_SaveAccounts, promptForEditMod, processEditMod, promptForAddRef, processAddRef, promptForEditAdmin, processEditAdmin, promptForEditRef, processEditRef, promptForAddMod, processAddMod };
+module.exports = {
+    showAdminMenu,
+    handleViewReferences,
+    promptForBulkAccounts_Step1_ModId,
+    processBulkAccounts_Step2_GetAccounts,
+    processBulkAccounts_Step3_SaveAccounts,
+    promptForEditMod,
+    processEditMod,
+    promptForAddRef,
+    processAddRef,
+    promptForEditAdmin,
+    processEditAdmin,
+    promptForEditRef,
+    processEditRef,
+    promptForAddMod,
+    processAddMod
+};
