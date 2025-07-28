@@ -1,40 +1,27 @@
-// index.js (Truly Complete & Final - with all fixes and require statements)
+// index.js (Truly Complete & Final - with messenger_api.js integration)
 const express = require('express');
-const axios = require('axios');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
 
-// --- THIS IS THE MISSING PART ---
 const dbManager = require('./database.js');
 const stateManager = require('./state_manager.js');
 const userHandler = require('./user_handler.js');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
-// --------------------------------
+const messengerApi = require('./messenger_api.js'); // The new, centralized API handler
 
 const app = express();
 app.use(express.json());
 
-const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
+const { VERIFY_TOKEN, ADMIN_ID } = secrets;
 
-// --- UTILITY FUNCTIONS ---
-
-async function sendText(psid, text) {
-    const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending message:", error.response?.data || error.message);
-    }
-}
-
-// --- RECEIPT HANDLER ---
 async function handleReceiptSubmission(sender_psid, imageUrl) {
+    const sendText = messengerApi.sendText; // Use the centralized function
     await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
     try {
-        const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
+        const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
 
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
@@ -57,16 +44,14 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
     }
 }
 
-// --- MAIN MESSAGE ROUTER ---
-
 async function handleMessage(sender_psid, webhook_event) {
+    const sendText = messengerApi.sendText; // Use the centralized function for all messaging
     const messageText = webhook_event.message?.text?.trim();
     const lowerCaseText = messageText?.toLowerCase();
 
-    // --- Special Setup/Debug Commands ---
     if (lowerCaseText === 'setup admin') {
-        if (sender_psid === ADMIN_ID) {
-            await dbManager.updateAdminInfo(sender_psid, "09xx-xxx-xxxx");
+        if (sender_psid === secrets.ADMIN_ID) {
+            await dbManager.updateAdminInfo(sender_psid, "09123963204, Karl Abalunan");
             await sendText(sender_psid, "✅ You have been successfully registered as the admin!");
             return adminHandler.showAdminMenu(sender_psid, sendText);
         } else {
@@ -77,7 +62,6 @@ async function handleMessage(sender_psid, webhook_event) {
         return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`);
     }
 
-    // --- Regular Bot Logic ---
     const isAdmin = await dbManager.isAdmin(sender_psid);
     const userStateObj = stateManager.getUserState(sender_psid);
 
@@ -138,8 +122,6 @@ async function handleMessage(sender_psid, webhook_event) {
         }
     }
 }
-
-// --- SERVER SETUP AND START ---
 
 async function startServer() {
     try {
