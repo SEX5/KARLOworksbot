@@ -1,4 +1,4 @@
-// index.js (Updated to forward receipt image to admin on error)
+// index.js (Updated to handle manual fallback flow)
 const express = require('express');
 const axios = require('axios');
 const { execFile } = require('child_process');
@@ -23,30 +23,17 @@ async function sendText(psid, text) {
     catch (error) { console.error("Error sending text message:", error.response?.data || error.message); }
 }
 
-// --- NEW FUNCTION TO SEND IMAGES ---
 async function sendImage(psid, imageUrl) {
     const messageData = {
         recipient: { id: psid },
-        message: {
-            attachment: {
-                type: "image",
-                payload: {
-                    url: imageUrl,
-                    is_reusable: false // It's safer to not reuse URLs provided by users
-                }
-            }
-        },
+        message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } },
         messaging_type: "RESPONSE"
     };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending image message:", error.response?.data || error.message);
-    }
+    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); } 
+    catch (error) { console.error("Error sending image message:", error.response?.data || error.message); }
 }
 
-
-// --- UPDATED FUNCTION WITH NEW ERROR HANDLING ---
+// --- UPDATED ERROR HANDLING ---
 async function handleReceiptSubmission(sender_psid, imageUrl) {
     await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
     try {
@@ -61,19 +48,14 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const receiptsDir = path.join(__dirname, 'receipts');
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
-        fs.writeFileSync(imagePath, imageBuffer); // Save a copy for records
+        fs.writeFileSync(imagePath, imageBuffer);
         
         await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
     } catch (error) {
-        console.error("Error in handleReceiptSubmission:", error.message);
-        
+        console.error("Error in handleReceiptSubmission, starting manual flow:", error.message);
         // --- THIS IS THE NEW LOGIC ---
-        // 1. Notify the admin with text.
-        await sendText(ADMIN_ID, `Admin Alert: Receipt analysis failed for user ${sender_psid}. The original receipt is attached below for manual review.`);
-        // 2. Forward the actual receipt image to the admin.
-        await sendImage(ADMIN_ID, imageUrl);
-        // 3. Notify the user that the admin will assist.
-        await sendText(sender_psid, "Sorry, there was an issue analyzing your receipt. An admin has been notified and will assist you shortly.");
+        // Instead of notifying the admin, we start the manual fallback conversation.
+        await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl);
     }
 }
 
@@ -112,6 +94,7 @@ async function handleMessage(sender_psid, webhook_event) {
     }
     
     if (isAdmin) {
+        // ... (Admin logic remains unchanged) ...
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
@@ -147,6 +130,11 @@ async function handleMessage(sender_psid, webhook_event) {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
+                // --- NEW STATES FOR MANUAL FALLBACK ---
+                case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, messageText, sendText);
+                case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, messageText, sendText, sendImage, ADMIN_ID);
+                
+                // --- Original States ---
                 case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, messageText, sendText);
                 case 'awaiting_password_for_purchase': return userHandler.handlePasswordForPurchase(sender_psid, messageText, sendText);
                 case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID);
