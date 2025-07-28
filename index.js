@@ -1,4 +1,4 @@
-// index.js (Complete & Final with Conversational Add Reference)
+// index.js (Updated to forward receipt image to admin on error)
 const express = require('express');
 const axios = require('axios');
 const { execFile } = require('child_process');
@@ -20,9 +20,33 @@ const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
 async function sendText(psid, text) {
     const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
     try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); }
-    catch (error) { console.error("Error sending message:", error.response?.data || error.message); }
+    catch (error) { console.error("Error sending text message:", error.response?.data || error.message); }
 }
 
+// --- NEW FUNCTION TO SEND IMAGES ---
+async function sendImage(psid, imageUrl) {
+    const messageData = {
+        recipient: { id: psid },
+        message: {
+            attachment: {
+                type: "image",
+                payload: {
+                    url: imageUrl,
+                    is_reusable: false // It's safer to not reuse URLs provided by users
+                }
+            }
+        },
+        messaging_type: "RESPONSE"
+    };
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    } catch (error) {
+        console.error("Error sending image message:", error.response?.data || error.message);
+    }
+}
+
+
+// --- UPDATED FUNCTION WITH NEW ERROR HANDLING ---
 async function handleReceiptSubmission(sender_psid, imageUrl) {
     await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
     try {
@@ -30,19 +54,29 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
+        
         const analysis = await paymentVerifier.sendGeminiRequest(image_b64);
-        if (!analysis) throw new Error("AI analysis failed.");
+        if (!analysis) throw new Error("AI analysis returned null.");
+        
         const receiptsDir = path.join(__dirname, 'receipts');
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
-        fs.writeFileSync(imagePath, imageBuffer);
+        fs.writeFileSync(imagePath, imageBuffer); // Save a copy for records
+        
         await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
     } catch (error) {
         console.error("Error in handleReceiptSubmission:", error.message);
-        await sendText(ADMIN_ID, `Admin Alert: Receipt analysis failed for user ${sender_psid}.`);
-        await sendText(sender_psid, "Sorry, there was an issue analyzing your receipt. An admin has been notified.");
+        
+        // --- THIS IS THE NEW LOGIC ---
+        // 1. Notify the admin with text.
+        await sendText(ADMIN_ID, `Admin Alert: Receipt analysis failed for user ${sender_psid}. The original receipt is attached below for manual review.`);
+        // 2. Forward the actual receipt image to the admin.
+        await sendImage(ADMIN_ID, imageUrl);
+        // 3. Notify the user that the admin will assist.
+        await sendText(sender_psid, "Sorry, there was an issue analyzing your receipt. An admin has been notified and will assist you shortly.");
     }
 }
+
 
 async function handleMessage(sender_psid, webhook_event) {
     const messageText = webhook_event.message?.text?.trim();
