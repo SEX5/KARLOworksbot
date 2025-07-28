@@ -6,7 +6,7 @@ const secrets = require('./secrets.js'); // Keeping this as you requested
 
 const GEMINI_API_KEY = secrets.GEMINI_API_KEY;
 // --- THIS IS THE UPGRADED MODEL ---
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
 
 
 const ANALYSIS_PROMPT = `
