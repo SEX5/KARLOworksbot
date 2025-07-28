@@ -1,4 +1,4 @@
-// index.js (Complete & Final with Conversational Mod Editing Logic)
+// index.js (Complete & Final with Conversational Add Reference)
 const express = require('express');
 const axios = require('axios');
 const { execFile } = require('child_process');
@@ -85,14 +85,15 @@ async function handleMessage(sender_psid, webhook_event) {
                     const currentPage = userStateObj.page || 1;
                     if (lowerCaseText === '1') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage + 1);
                     if (lowerCaseText === '2') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage - 1);
-                    break; // Fall through if not a page command
+                    break;
                 case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_edit_mod_id': return adminHandler.processEditMod_Step2_AskDetail(sender_psid, messageText, sendText);
                 case 'awaiting_edit_mod_detail_choice': return adminHandler.processEditMod_Step3_AskValue(sender_psid, messageText, sendText);
                 case 'awaiting_edit_mod_new_value': return adminHandler.processEditMod_Step4_SaveValue(sender_psid, messageText, sendText);
                 case 'awaiting_edit_mod_continue': return adminHandler.processEditMod_Step5_Continue(sender_psid, messageText, sendText);
-                case 'awaiting_add_ref': return adminHandler.processAddRef(sender_psid, messageText, sendText);
+                case 'awaiting_add_ref_number': return adminHandler.processAddRef_Step2_GetMod(sender_psid, messageText, sendText);
+                case 'awaiting_add_ref_mod_id': return adminHandler.processAddRef_Step3_Save(sender_psid, messageText, sendText);
                 case 'awaiting_edit_admin': return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
                 case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
                 case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
@@ -102,7 +103,7 @@ async function handleMessage(sender_psid, webhook_event) {
             case '1': return adminHandler.handleViewReferences(sender_psid, sendText, 1);
             case '2': return adminHandler.promptForBulkAccounts_Step1_ModId(sender_psid, sendText);
             case '3': return adminHandler.promptForEditMod_Step1_ModId(sender_psid, sendText);
-            case '4': return adminHandler.promptForAddRef(sender_psid, sendText);
+            case '4': return adminHandler.promptForAddRef_Step1_GetRef(sender_psid, sendText);
             case '5': return adminHandler.promptForEditAdmin(sender_psid, sendText);
             case '6': return adminHandler.promptForEditRef(sender_psid, sendText);
             case '7': return adminHandler.promptForAddMod(sender_psid, sendText);
