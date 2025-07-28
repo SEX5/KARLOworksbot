@@ -1,4 +1,4 @@
-// database.js (Final Version for Neon/PostgreSQL)
+// database.js (Complete with new function)
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
@@ -9,7 +9,7 @@ function getDb() {
         pool = new Pool({
             connectionString: secrets.NEON_DATABASE_URL,
             ssl: {
-                rejectUnauthorized: false // Required for Neon
+                rejectUnauthorized: false
             }
         });
     }
@@ -36,8 +36,6 @@ async function setupDatabase() {
     }
 }
 
-// --- Helper Functions (rewritten for pg syntax) ---
-// Note: pg uses $1, $2 for placeholders, not ?
 async function isAdmin(userId) { const res = await getDb().query('SELECT * FROM admins WHERE user_id = $1', [userId]); return res.rows[0] || null; }
 async function getAdminInfo() { const res = await getDb().query('SELECT * FROM admins LIMIT 1'); return res.rows[0] || null; }
 async function updateAdminInfo(userId, gcashNumber) { await getDb().query('INSERT INTO admins (user_id, gcash_number) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET gcash_number = $2', [userId, gcashNumber]); }
@@ -53,5 +51,7 @@ async function getAvailableAccount(modId) { const res = await getDb().query('SEL
 async function claimAccount(accountId) { await getDb().query('UPDATE accounts SET is_available = FALSE WHERE id = $1', [accountId]); }
 async function useClaim(refNumber) { await getDb().query('UPDATE "references" SET claims_used = claims_used + 1 WHERE ref_number = $1', [refNumber]); }
 async function addMod(id, name, description, price, imageUrl) { await getDb().query('INSERT INTO mods (id, name, description, price, image_url) VALUES ($1, $2, $3, $4, $5) ON CONFLICT(id) DO NOTHING', [id, name, description, price, imageUrl]); }
+// --- NEW FUNCTION ---
+async function getModsByPrice(price) { const res = await getDb().query('SELECT * FROM mods WHERE price BETWEEN $1 AND $2', [price - 0.01, price + 0.01]); return res.rows; }
 
-module.exports = { setupDatabase, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod };
+module.exports = { setupDatabase, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice };
