@@ -1,4 +1,4 @@
-// index.js (Complete & Final with Conversational Add Reference)
+// index.js (Final Version with Updated Purchase Flow Routing)
 const express = require('express');
 const axios = require('axios');
 const { execFile } = require('child_process');
@@ -81,11 +81,6 @@ async function handleMessage(sender_psid, webhook_event) {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
-                case 'viewing_references':
-                    const currentPage = userStateObj.page || 1;
-                    if (lowerCaseText === '1') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage + 1);
-                    if (lowerCaseText === '2') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage - 1);
-                    break;
                 case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_edit_mod_id': return adminHandler.processEditMod_Step2_AskDetail(sender_psid, messageText, sendText);
@@ -113,8 +108,11 @@ async function handleMessage(sender_psid, webhook_event) {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
-                case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID);
-                case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, messageText, sendText, ADMIN_ID);
+                // --- NEW STATES FOR THE PURCHASE FLOW ---
+                case 'awaiting_desired_email': return userHandler.processDesiredEmail(sender_psid, messageText, sendText);
+                case 'awaiting_desired_password': return userHandler.processDesiredPassword(sender_psid, messageText, sendText);
+
+                // --- Existing states ---
                 case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, messageText, sendText);
                 case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, messageText, sendText);
                 case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, messageText, sendText);
@@ -158,4 +156,3 @@ async function startServer() {
 }
 
 startServer();
-                 
