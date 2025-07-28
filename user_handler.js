@@ -21,16 +21,45 @@ async function handleViewMods(sender_psid, sendText) {
 
 async function handleWantMod(sender_psid, text, sendText) {
     const modId = parseInt(text.replace('want mod', '').trim());
-    if (isNaN(modId)) return sendText(sender_psid, "Invalid format. Please type 'Want Mod [Number]'.");
+    if (isNaN(modId)) {
+        await sendText(sender_psid, "Invalid format. Please type 'Want Mod [Number]'.");
+        return;
+    }
     const mod = await db.getModById(modId);
-    if (!mod) return sendText(sender_psid, "Invalid mod number. Please select a valid mod from the list.");
-    const adminInfo = await db.getAdminInfo();
-    const gcashNumber = adminInfo?.gcash_number || "not set by admin";
-    await sendText(sender_psid, `You selected Mod ${mod.id}. Please send payment of ${mod.price} PHP to this GCash number: ${gcashNumber}.\nAfter payment, send your receipt screenshot to confirm.`);
-    stateManager.clearUserState(sender_psid);
+    if (!mod) {
+        await sendText(sender_psid, "Invalid mod number. Please select a valid mod from the list.");
+        return;
+    }
+    await sendText(sender_psid, `You selected Mod ${mod.id}. Before we proceed with payment, please provide the email for the account.`);
+    stateManager.setUserState(sender_psid, 'awaiting_email_for_purchase', { modId: mod.id });
 }
 
+async function handleEmailForPurchase(sender_psid, text, sendText) {
+    const { modId } = stateManager.getUserState(sender_psid);
+    const email = text.trim();
+    await sendText(sender_psid, "Thank you. Now, please enter the password for the account.");
+    stateManager.setUserState(sender_psid, 'awaiting_password_for_purchase', { modId, email });
+}
+
+async function handlePasswordForPurchase(sender_psid, text, sendText) {
+    const { modId, email } = stateManager.getUserState(sender_psid);
+    const password = text.trim();
+    const mod = await db.getModById(modId);
+    if (!mod) {
+        await sendText(sender_psid, "Something went wrong. Please try selecting a mod again from the menu.");
+        stateManager.clearUserState(sender_psid);
+        return;
+    }
+    const adminInfo = await db.getAdminInfo();
+    const gcashNumber = adminInfo?.gcash_number || "not set by admin";
+    await sendText(sender_psid, `Great! You're purchasing Mod ${mod.id}.\nPlease send payment of ${mod.price} PHP to this GCash number: ${gcashNumber}.\n\nAfter payment, please send a screenshot of your receipt to confirm the purchase.`);
+    stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, password });
+}
+
+
 async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) {
+    const precollectedState = stateManager.getUserState(sender_psid); // Get current state which may contain credentials
+
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
@@ -45,14 +74,24 @@ async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) 
 
     if (matchingMods.length === 1) {
         const mod = matchingMods[0];
+        let confirmationStateData = { refNumber, modId: mod.id, modName: mod.name };
+        if (precollectedState) { // Carry over credentials if they exist
+            confirmationStateData.email = precollectedState.email;
+            confirmationStateData.password = precollectedState.password;
+        }
         await sendText(sender_psid, `I see a payment of ${amount} PHP. Did you purchase Mod ${mod.id} (${mod.name})?\n\nPlease reply with "Yes" or "No".`);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name });
+        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', confirmationStateData);
     } else if (matchingMods.length > 1) {
+        let clarificationStateData = { refNumber };
+         if (precollectedState) { // Carry over credentials if they exist
+            clarificationStateData.email = precollectedState.email;
+            clarificationStateData.password = precollectedState.password;
+        }
         let response = `I see a payment of ${amount} PHP, which matches multiple mods:\n\n`;
         matchingMods.forEach(m => { response += `- Mod ${m.id}: ${m.name}\n`; });
         response += "\nPlease type the number of the mod you purchased (e.g., '1').";
         await sendText(sender_psid, response);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber });
+        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', clarificationStateData);
     } else {
         await sendText(sender_psid, `I received your payment of ${amount} PHP, but I could not find a mod with that exact price. An admin has been notified and will assist you shortly.`);
         await sendText(ADMIN_ID, `User ${sender_psid} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
@@ -60,12 +99,17 @@ async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) 
 }
 
 async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
-    const { refNumber, modId, modName } = stateManager.getUserState(sender_psid);
+    const { refNumber, modId, modName, email, password } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'yes') {
         try {
             await db.addReference(refNumber, sender_psid, modId, 3);
             await sendText(sender_psid, `✅ Thank you for confirming! Your purchase of Mod ${modId} has been registered with 3 replacement claims.`);
-            const adminNotification = `✅ New Order Registered!\n\nUser: ${sender_psid}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}`;
+            
+            const userName = await messengerApi.getUserProfile(sender_psid);
+            let adminNotification = `✅ New Order Registered!\n\nUser: ${userName} (${sender_psid})\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}`;
+            if (email && password) {
+                adminNotification += `\n\nUser Provided Details:\nEmail: \`${email}\`\nPassword: \`${password}\``;
+            }
             await sendText(ADMIN_ID, adminNotification);
         } catch (e) {
             if (e.message === 'Duplicate reference number') {
@@ -83,7 +127,7 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
 }
 
 async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
-    const { refNumber } = stateManager.getUserState(sender_psid);
+    const { refNumber, email, password } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
     const mod = await db.getModById(modId);
 
@@ -94,7 +138,12 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
     try {
         await db.addReference(refNumber, sender_psid, modId, 3);
         await sendText(sender_psid, `✅ Got it! Your purchase of Mod ${modId} has been registered with 3 replacement claims.`);
-        const adminNotification = `✅ New Order Registered!\n\nUser: ${mod.name} (${sender_psid})\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}`;
+        
+        const userName = await messengerApi.getUserProfile(sender_psid);
+        let adminNotification = `✅ New Order Registered!\n\nUser: ${userName} (${sender_psid})\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}`;
+        if(email && password){
+            adminNotification += `\n\nUser Provided Details:\nEmail: \`${email}\`\nPassword: \`${password}\``;
+        }
         await sendText(ADMIN_ID, adminNotification);
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
@@ -122,5 +171,4 @@ async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID) {
     stateManager.clearUserState(sender_psid);
 }
 
-module.exports = { showUserMenu, handleViewMods, handleWantMod, handleReceiptAnalysis, handleModConfirmation, handleModClarification, promptForCheckClaims, processCheckClaims, promptForReplacement, processReplacementRequest, promptForAdminMessage, forwardMessageToAdmin };
-    
+module.exports = { showUserMenu, handleViewMods, handleWantMod, handleEmailForPurchase, handlePasswordForPurchase, handleReceiptAnalysis, handleModConfirmation, handleModClarification, promptForCheckClaims, processCheckClaims, promptForReplacement, processReplacementRequest, promptForAdminMessage, forwardMessageToAdmin };
