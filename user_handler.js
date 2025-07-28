@@ -1,4 +1,4 @@
-// user_handler.js (Complete & Final with Email/Password Collection)
+// user_handler.js (Final Corrected Version with Full Purchase Flow)
 const db = require('./database');
 const stateManager = require('./state_manager');
 
@@ -8,7 +8,8 @@ async function showUserMenu(sender_psid, sendText) {
     stateManager.clearUserState(sender_psid);
 }
 
-// --- Type 1 & Purchase Flow ---
+// --- Type 1 & Full Purchase Flow ---
+
 async function handleViewMods(sender_psid, sendText) {
     const mods = await db.getMods();
     if (!mods || mods.length === 0) return sendText(sender_psid, "There are currently no mods available.\nTo return to the menu, type \"Menu\".");
@@ -52,52 +53,60 @@ async function processDesiredPassword(sender_psid, text, sendText) {
     
     const message = `Perfect! To complete your order for Mod ${modId} (${modName}) with the email \`${email}\`, please send a payment of ${price} PHP to GCash: ${gcashNumber}.\n\nAfter paying, send your receipt screenshot here to confirm.`;
     await sendText(sender_psid, message);
-    stateManager.setUserState(sender_psid, 'awaiting_payment_receipt', { modId, modName, email, password });
+    stateManager.setUserState(sender_psid, 'awaiting_payment_receipt', { modId, modName, price, email, password });
 }
 
 async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) {
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
+    const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
+    const amountPaid = parseFloat(amountStr);
     const userState = stateManager.getUserState(sender_psid);
 
     if (!userState || userState.state !== 'awaiting_payment_receipt') {
         await sendText(sender_psid, "Thanks for the receipt! However, I don't have a pending order for you. Please start by choosing a mod first by typing '1'.");
-        return;
+        return stateManager.clearUserState(sender_psid);
     }
     
-    if (!refNumber || !/^\d{13}$/.test(refNumber)) {
-        await sendText(sender_psid, "I couldn't read a valid 13-digit reference number from that receipt. An admin has been notified to assist you.");
-        return;
+    if (!refNumber || !/^\d{13}$/.test(refNumber) || isNaN(amountPaid)) {
+        await sendText(sender_psid, "I couldn't read a valid reference number or amount from that receipt. An admin has been notified to assist you.");
+        return stateManager.clearUserState(sender_psid);
     }
 
-    const { modId, modName, email, password } = userState;
+    const { modId, modName, price, email, password } = userState;
+
+    // --- NEW: Price Verification Step ---
+    if (Math.abs(amountPaid - price) > 0.01) { // Check if the paid amount matches the mod's price
+        await sendText(sender_psid, `The amount on the receipt (${amountPaid} PHP) does not match the price of Mod ${modId} (${price} PHP). An admin has been notified and will assist you shortly.`);
+        await sendText(ADMIN_ID, `⚠️ Price Mismatch!\n\nUser: ${sender_psid}\nMod: ${modName}\nRef: ${refNumber}\nExpected Price: ${price} PHP\nAmount Paid: ${amountPaid} PHP`);
+        return stateManager.clearUserState(sender_psid);
+    }
 
     try {
-        await db.addReference(refNumber, sender_psid, modId, 3);
-        await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered. The admin will create your account and send the details shortly.`);
+        await db.addReference(refNumber, sender_psid, modId, email, password, 3);
+        await sendText(sender_psid, `✅ Thank you! Your payment of ${amountPaid} PHP for Mod ${modId} has been confirmed and registered. The admin will create your account and send the details shortly.`);
         
         const adminNotification = `✅ New Order Ready for Creation!\n\nUser: ${sender_psid}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}\n\n--> Email: ${email}\n--> Password: ${password}`;
         await sendText(ADMIN_ID, adminNotification);
+
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
             await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
+            await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
         } else {
             console.error(e);
-            await sendText(sender_psid, "An unexpected error occurred. An admin has been notified.");
+            await sendText(sender_psid, "An unexpected error occurred while saving your order. An admin has been notified.");
         }
     } finally {
         stateManager.clearUserState(sender_psid);
     }
 }
 
-// --- Type 2 ---
+
+// --- Type 2, 3, 4 (Claims, Replacement, Contact) ---
 async function promptForCheckClaims(sender_psid, sendText) { await sendText(sender_psid, "Please provide your 13-digit GCash reference number to check remaining replacement accounts."); stateManager.setUserState(sender_psid, 'awaiting_ref_for_check'); }
 async function processCheckClaims(sender_psid, refNumber, sendText) { if (!/^\d{13}$/.test(refNumber)) return sendText(sender_psid, "Invalid reference number format."); const ref = await db.getReference(refNumber); if (!ref) { await sendText(sender_psid, "This reference number was not found."); } else { const remaining = ref.claims_max - ref.claims_used; await sendText(sender_psid, `You have ${remaining} replacement account(s) left for Mod ${ref.mod_id} (${ref.mod_name}).`); } stateManager.clearUserState(sender_psid); }
-
-// --- Type 3 ---
 async function promptForReplacement(sender_psid, sendText) { await sendText(sender_psid, "Please provide your 13-digit GCash reference number to request a replacement account."); stateManager.setUserState(sender_psid, 'awaiting_ref_for_replacement'); }
 async function processReplacementRequest(sender_psid, refNumber, sendText) { if (!/^\d{13}$/.test(refNumber)) return sendText(sender_psid, "Invalid reference number format."); const ref = await db.getReference(refNumber); if (!ref || ref.claims_used >= ref.claims_max) { await sendText(sender_psid, "No replacement accounts available for this reference number."); stateManager.clearUserState(sender_psid); return; } const account = await db.getAvailableAccount(ref.mod_id); if (!account) { await sendText(sender_psid, "Sorry, no replacement accounts are in stock for your mod. Please contact an admin."); stateManager.clearUserState(sender_psid); return; } await db.claimAccount(account.id); await db.useClaim(ref.ref_number); await sendText(sender_psid, `Here is your replacement account for Mod ${ref.mod_id}:\nUsername: \`${account.username}\`\nPassword: \`${account.password}\``); stateManager.clearUserState(sender_psid); }
-
-// --- Type 4 ---
 async function promptForAdminMessage(sender_psid, sendText) { await sendText(sender_psid, "Please provide your message for the admin, and it will be forwarded."); stateManager.setUserState(sender_psid, 'awaiting_admin_message'); }
 async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID) { const forwardMessage = `Message from user ${sender_psid}:\n\n"${text}"`; await sendText(ADMIN_ID, forwardMessage); await sendText(sender_psid, "Your message has been sent to the admin. You will be contacted soon."); stateManager.clearUserState(sender_psid); }
 
