@@ -50,7 +50,7 @@ async function handleMessage(sender_psid, webhook_event) {
 
     if (lowerCaseText === 'setup admin') {
         if (sender_psid === ADMIN_ID) {
-            await dbManager.updateAdminInfo(sender_psid, "09xx-xxx-xxxx");
+            await dbManager.updateAdminInfo(sender_psid, "09123963204 Karl Abalunan");
             await sendText(sender_psid, "✅ You have been successfully registered as the admin!");
             return adminHandler.showAdminMenu(sender_psid, sendText);
         } else {
