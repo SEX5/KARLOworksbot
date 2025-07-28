@@ -1,13 +1,11 @@
-// payment_verifier.js (Node.js Version - Updated to gemini-1.5-flash)
+// payment_verifier.js (Node.js Version - Updated with Retry Logic for secrets.js)
 const axios = require('axios');
 const fs = require('fs/promises'); // Using fs.promises for async file operations
 const sharp = require('sharp');
-const secrets = require('./secrets.js');
+const secrets = require('./secrets.js'); // Keeping this as you requested
 
 const GEMINI_API_KEY = secrets.GEMINI_API_KEY;
-// --- THIS IS THE CORRECTED BASE_URL to use the new model ---
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
-
 
 const ANALYSIS_PROMPT = `
 You are a highly-attentive payment verification assistant. Your task is to analyze payment receipt screenshots to check for legitimacy.
@@ -46,11 +44,6 @@ Respond in this exact JSON format. Do not include any other text, comments, or m
 `; // End of ANALYSIS_PROMPT
 
 
-/**
- * Resizes and encodes an image to base64.
- * @param {Buffer} imageBuffer - The raw buffer of the image.
- * @returns {Promise<string|null>} The base64 encoded string or null on error.
- */
 async function encodeImage(imageBuffer) {
     try {
         let resizedBuffer = await sharp(imageBuffer)
@@ -65,45 +58,55 @@ async function encodeImage(imageBuffer) {
     }
 }
 
+// Helper function to create a delay
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 /**
- * Sends the analysis request to the Gemini API.
+ * Sends the analysis request to the Gemini API with retry logic.
  * @param {string} image_b64 - The base64 encoded image data.
  * @returns {Promise<object|null>} The parsed JSON analysis or null on error.
  */
 async function sendGeminiRequest(image_b64) {
-    try {
-        console.log("Sending request to Gemini Vision API...");
-        const payload = {
-            "contents": [{
-                "parts": [
-                    { "text": ANALYSIS_PROMPT },
-                    { "inline_data": { "mime_type": "image/png", "data": image_b64 } }
-                ]
-            }]
-        };
+    const maxRetries = 3;
+    const payload = {
+        "contents": [{
+            "parts": [
+                { "text": ANALYSIS_PROMPT },
+                { "inline_data": { "mime_type": "image/png", "data": image_b64 } }
+            ]
+        }]
+    };
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`Sending request to Gemini Vision API (Attempt ${attempt}/${maxRetries})...`);
+            const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 45000 });
+            
+            if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                let content = response.data.candidates[0].content.parts[0].text;
+                content = content.trim().replace('```json', '').replace('```', '');
+                return JSON.parse(content); // Success, so we exit the loop
+            } else {
+                console.error("Invalid response structure from Gemini API:", response.data);
+                throw new Error("Invalid response structure from Gemini.");
+            }
+        } catch (error) {
+            const isOverloaded = error.response?.status === 503;
+            const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
 
-        const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 45000 });
-        
-        if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            let content = response.data.candidates[0].content.parts[0].text;
-            content = content.trim().replace('```json', '').replace('```', '');
-            return JSON.parse(content);
-        } else {
-            console.error("Invalid response structure from Gemini API:", response.data);
-            return null;
+            console.error(`Gemini request failed on attempt ${attempt}:`, errorMessage);
+
+            if (isOverloaded && attempt < maxRetries) {
+                const delayTime = 1500 * attempt;
+                console.log(`Model is overloaded. Retrying in ${delayTime / 1000} seconds...`);
+                await delay(delayTime);
+            } else {
+                throw new Error(errorMessage);
+            }
         }
-    } catch (error) {
-        const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
-        console.error("Gemini request failed:", errorMessage);
-        throw new Error(errorMessage); // Re-throw to be caught by handleReceiptSubmission
     }
 }
 
-/**
- * Creates a standardized error JSON output.
- * @param {string} reason - The reason for the error.
- * @returns {object} The error object.
- */
 function createErrorJson(reason) {
     return {
         extracted_info: {},
@@ -112,8 +115,6 @@ function createErrorJson(reason) {
     };
 }
 
-
-// --- Main export ---
 module.exports = {
     encodeImage,
     sendGeminiRequest,
