@@ -1,4 +1,4 @@
-// user_handler.js (Updated with Automated Reference Submission)
+// user_handler.js (Corrected with Admin "New Order" Notification)
 const db = require('./database');
 const stateManager = require('./state_manager');
 
@@ -30,7 +30,7 @@ async function handleWantMod(sender_psid, text, sendText) {
     stateManager.clearUserState(sender_psid);
 }
 
-// --- NEW functions for automated receipt flow ---
+// --- Automated Receipt Flow ---
 async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) {
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
@@ -47,7 +47,7 @@ async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) 
     if (matchingMods.length === 1) {
         const mod = matchingMods[0];
         await sendText(sender_psid, `I see a payment of ${amount} PHP. Did you purchase Mod ${mod.id} (${mod.name})?\n\nPlease reply with "Yes" or "No".`);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id });
+        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name });
     } else if (matchingMods.length > 1) {
         let response = `I see a payment of ${amount} PHP, which matches multiple mods:\n\n`;
         matchingMods.forEach(m => { response += `- Mod ${m.id}: ${m.name}\n`; });
@@ -60,14 +60,18 @@ async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) 
     }
 }
 
-async function handleModConfirmation(sender_psid, text, sendText) {
-    const { refNumber, modId } = stateManager.getUserState(sender_psid);
+async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
+    const { refNumber, modId, modName } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'yes') {
         try {
             await db.addReference(refNumber, sender_psid, modId);
             await sendText(sender_psid, `✅ Thank you for confirming! Your purchase of Mod ${modId} has been registered.`);
+            // --- NEW: Send notification to Admin ---
+            const adminNotification = `✅ New Order Registered!\n\nUser: ${sender_psid}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}`;
+            await sendText(ADMIN_ID, adminNotification);
         } catch (e) {
             await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
+            await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
         }
     } else {
         await sendText(sender_psid, "Okay, the transaction has been cancelled. If you made a mistake, please contact an admin.");
@@ -75,18 +79,24 @@ async function handleModConfirmation(sender_psid, text, sendText) {
     stateManager.clearUserState(sender_psid);
 }
 
-async function handleModClarification(sender_psid, text, sendText) {
+async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
     const { refNumber } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
-    if (isNaN(modId) || !(await db.getModById(modId))) {
+    const mod = await db.getModById(modId);
+
+    if (isNaN(modId) || !mod) {
         await sendText(sender_psid, "That's not a valid Mod ID. Please type just the number of the mod you purchased.");
         return;
     }
     try {
         await db.addReference(refNumber, sender_psid, modId);
         await sendText(sender_psid, `✅ Got it! Your purchase of Mod ${modId} has been registered.`);
+        // --- NEW: Send notification to Admin ---
+        const adminNotification = `✅ New Order Registered!\n\nUser: ${sender_psid}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}`;
+        await sendText(ADMIN_ID, adminNotification);
     } catch (e) {
         await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
+        await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
     }
     stateManager.clearUserState(sender_psid);
 }
