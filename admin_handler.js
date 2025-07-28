@@ -1,4 +1,4 @@
-// admin_handler.js (Complete & Final with Mod Pre-Check)
+// admin_handler.js (Corrected with claims_max = 3)
 const db = require('./database');
 const stateManager = require('./state_manager');
 
@@ -16,7 +16,7 @@ async function handleViewReferences(sender_psid, sendText) {
     }
     let response = "Reference Numbers Log:\n\n";
     refs.forEach(r => {
-        response += `Ref: ${r.ref_number}\nMod: ${r.mod_name}\nUser: ${r.user_id}\n\n`;
+        response += `Ref: ${r.ref_number}\nMod: ${r.mod_name}\nUser: ${r.user_id}\nClaims: ${r.claims_used}/${r.claims_max}\n\n`;
     });
     await sendText(sender_psid, response);
 }
@@ -29,12 +29,10 @@ async function promptForBulkAccounts_Step1_ModId(sender_psid, sendText) {
         stateManager.clearUserState(sender_psid);
         return;
     }
-
     let availableMods = "Available Mod IDs:\n";
     mods.forEach(mod => {
         availableMods += `- ID: ${mod.id}, Name: ${mod.name}\n`;
     });
-
     await sendText(sender_psid, `${availableMods}\nWhich mod would you like to add accounts to? Please type the Mod ID (e.g., 1).`);
     stateManager.setUserState(sender_psid, 'awaiting_bulk_accounts_mod_id');
 }
@@ -94,10 +92,7 @@ async function processEditMod(sender_psid, text, sendText) {
             const [key, ...valueParts] = part.split(':');
             const value = valueParts.join(':').trim();
             const keyLower = key.trim().toLowerCase();
-            
-            if (keyLower === 'description') detailsToUpdate.description = value;
-            if (keyLower === 'price') detailsToUpdate.price = parseFloat(value);
-            if (keyLower === 'image') detailsToUpdate.image_url = value;
+            if (['description', 'price', 'image_url'].includes(keyLower)) { detailsToUpdate[keyLower] = keyLower === 'price' ? parseFloat(value) : value; }
         });
         if (Object.keys(detailsToUpdate).length === 0) {
             throw new Error("No valid details to update were provided.");
@@ -124,10 +119,14 @@ async function processAddRef(sender_psid, text, sendText) {
         if (!/^\d{13}$/.test(ref) || !userId || isNaN(modId) || !(await db.getModById(modId))) {
             throw new Error("Invalid format, User ID, or Mod ID.");
         }
-        await db.addReference(ref, userId, modId);
-        await sendText(sender_psid, "Reference number added successfully.");
+        await db.addReference(ref, userId, modId, 3); // <-- Pass 3 as claims_max
+        await sendText(sender_psid, "Reference number added successfully with 3 replacement claims.");
     } catch (e) {
-        await sendText(sender_psid, `Could not add reference. It might already exist.\nError: ${e.message}`);
+        if (e.message === 'Duplicate reference number') {
+            await sendText(sender_psid, "Could not add reference. It already exists.");
+        } else {
+            await sendText(sender_psid, `Could not add reference. Error: ${e.message}`);
+        }
     } finally {
         stateManager.clearUserState(sender_psid);
     }
@@ -135,7 +134,7 @@ async function processAddRef(sender_psid, text, sendText) {
 
 // --- Type 5 ---
 async function promptForEditAdmin(sender_psid, sendText) {
-    await sendText(sender_psid, `Provide the new admin info.\nFormat: Facebook ID: [New ID], GCash Number: [New Number]`);
+    await sendText(sender_psid, `Provide new admin info.\nFormat: Facebook ID: [New ID], GCash Number: [New Number]`);
     stateManager.setUserState(sender_psid, 'awaiting_edit_admin');
 }
 
@@ -144,11 +143,11 @@ async function processEditAdmin(sender_psid, text, sendText) {
         const parts = text.split(',').map(p => p.trim());
         const newAdminId = parts.find(p => p.toLowerCase().startsWith('facebook id:')).split(':')[1].trim();
         const newGcash = parts.find(p => p.toLowerCase().startsWith('gcash number:')).split(':')[1].trim();
-        if (!newAdminId || !newGcash) throw new Error("Missing Facebook ID or GCash Number.");
+        if (!newAdminId || !newGcash) throw new Error("Missing details.");
         await db.updateAdminInfo(newAdminId, newGcash);
         await sendText(sender_psid, "Admin info updated successfully.");
     } catch (e) {
-        await sendText(sender_psid, `Invalid format. Please try again.\nError: ${e.message}`);
+        await sendText(sender_psid, `Invalid format. Error: ${e.message}`);
     } finally {
         stateManager.clearUserState(sender_psid);
     }
@@ -156,7 +155,7 @@ async function processEditAdmin(sender_psid, text, sendText) {
 
 // --- Type 6 ---
 async function promptForEditRef(sender_psid, sendText) {
-    await sendText(sender_psid, `Provide the reference number and the new mod ID to associate with it.\nFormat: [ref_number], Mod [ID]`);
+    await sendText(sender_psid, `Provide the ref number and the new mod ID.\nFormat: [ref_number], Mod [ID]`);
     stateManager.setUserState(sender_psid, 'awaiting_edit_ref');
 }
 
@@ -164,16 +163,12 @@ async function processEditRef(sender_psid, text, sendText) {
     try {
         const [ref, modIdStr] = text.split(',').map(p => p.trim());
         const newModId = parseInt(modIdStr.replace('mod', '').trim());
-        if (!/^\d{13}$/.test(ref) || !(await db.getReference(ref))) {
-            throw new Error("Invalid or non-existent reference number.");
-        }
-        if (isNaN(newModId) || !(await db.getModById(newModId))) {
-            throw new Error("Invalid Mod ID.");
-        }
+        if (!/^\d{13}$/.test(ref) || !(await db.getReference(ref))) throw new Error("Invalid ref number.");
+        if (isNaN(newModId) || !(await db.getModById(newModId))) throw new Error("Invalid Mod ID.");
         await db.updateReferenceMod(ref, newModId);
-        await sendText(sender_psid, `Reference number ${ref} updated successfully to Mod ${newModId}.`);
+        await sendText(sender_psid, `Reference ${ref} updated to Mod ${newModId}.`);
     } catch (e) {
-        await sendText(sender_psid, `Invalid format. Please try again.\nError: ${e.message}`);
+        await sendText(sender_psid, `Invalid format. Error: ${e.message}`);
     } finally {
         stateManager.clearUserState(sender_psid);
     }
@@ -190,9 +185,7 @@ async function processAddMod(sender_psid, text, sendText) {
         const [id, name, description, price, imageUrl] = text.split(',').map(p => p.trim());
         const modId = parseInt(id);
         const modPrice = parseFloat(price);
-        if (isNaN(modId) || !name || isNaN(modPrice)) {
-            throw new Error("ID, Name, and Price are required and must be the correct format.");
-        }
+        if (isNaN(modId) || !name || isNaN(modPrice)) throw new Error("ID, Name, and Price are required and must be the correct format.");
         await db.addMod(modId, name, description, modPrice, imageUrl);
         await sendText(sender_psid, `✅ Mod ${modId} (${name}) created successfully!`);
     } catch (e) {
@@ -202,20 +195,4 @@ async function processAddMod(sender_psid, text, sendText) {
     }
 }
 
-module.exports = {
-    showAdminMenu,
-    handleViewReferences,
-    promptForBulkAccounts_Step1_ModId,
-    processBulkAccounts_Step2_GetAccounts,
-    processBulkAccounts_Step3_SaveAccounts,
-    promptForEditMod,
-    processEditMod,
-    promptForAddRef,
-    processAddRef,
-    promptForEditAdmin,
-    processEditAdmin,
-    promptForEditRef,
-    processEditRef,
-    promptForAddMod,
-    processAddMod
-};
+module.exports = { showAdminMenu, handleViewReferences, promptForBulkAccounts_Step1_ModId, processBulkAccounts_Step2_GetAccounts, processBulkAccounts_Step3_SaveAccounts, promptForEditMod, processEditMod, promptForAddRef, processAddRef, promptForEditAdmin, processEditAdmin, promptForEditRef, processEditRef, promptForAddMod, processAddMod };
