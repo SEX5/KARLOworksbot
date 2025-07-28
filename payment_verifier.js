@@ -1,11 +1,13 @@
-// payment_verifier.js (Node.js Version - Updated with Retry Logic for secrets.js)
+// payment_verifier.js (Node.js Version - Upgraded to Gemini 1.5 Pro)
 const axios = require('axios');
 const fs = require('fs/promises'); // Using fs.promises for async file operations
 const sharp = require('sharp');
 const secrets = require('./secrets.js'); // Keeping this as you requested
 
 const GEMINI_API_KEY = secrets.GEMINI_API_KEY;
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
+// --- THIS IS THE UPGRADED MODEL ---
+const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=";
+
 
 const ANALYSIS_PROMPT = `
 You are a highly-attentive payment verification assistant. Your task is to analyze payment receipt screenshots to check for legitimacy.
@@ -80,7 +82,7 @@ async function sendGeminiRequest(image_b64) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             console.log(`Sending request to Gemini Vision API (Attempt ${attempt}/${maxRetries})...`);
-            const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 45000 });
+            const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 60000 }); // Increased timeout for Pro model
             
             if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                 let content = response.data.candidates[0].content.parts[0].text;
