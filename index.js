@@ -1,4 +1,4 @@
-// index.js (Truly Complete & Final - with Node.js AI Verifier)
+// index.js (Truly Complete & Final - using Node.js AI Verifier)
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -9,7 +9,7 @@ const dbManager = require('./database');
 const stateManager = require('./state_manager');
 const userHandler = require('./user_handler');
 const adminHandler = require('./admin_handler');
-const secrets = require('./secrets.js');
+const secrets = require('./secrets.js'); // Using secrets.js for debugging
 
 // --- NEW: Import our Node.js verifier ---
 const paymentVerifier = require('./payment_verifier.js'); // This is the JS verifier!
@@ -62,9 +62,9 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         // Attempt to parse error as JSON if it came from verifier
         let errorReason = "An unknown error occurred during verification.";
         try {
-            const parsedError = JSON.parse(error.message);
+            const parsedError = JSON.parse(error.message); // Verifier might throw JSON errors
             errorReason = parsedError.reasoning || errorReason;
-        } catch (e) { /* not JSON error */ }
+        } catch (e) { /* not a JSON error from verifier */ }
 
         await sendText(ADMIN_ID, `Admin Alert: Receipt verification failed for user ${sender_psid}. Reason: ${errorReason}`);
         await sendText(sender_psid, "Sorry, there was an issue verifying your receipt. An admin has been notified.");
@@ -114,14 +114,13 @@ async function handleMessage(sender_psid, webhook_event) {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
-                case 'awaiting_bulk_accounts': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
+                case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
+                case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_edit_mod': return adminHandler.processEditMod(sender_psid, messageText, sendText);
                 case 'awaiting_add_ref': return adminHandler.processAddRef(sender_psid, messageText, sendText);
                 case 'awaiting_edit_admin': return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
                 case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
                 case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
-                case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
-                case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
             }
         }
         switch (lowerCaseText) {
