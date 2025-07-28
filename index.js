@@ -113,6 +113,8 @@ async function handleMessage(sender_psid, webhook_event) {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
+                case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, messageText, sendText);
+                case 'awaiting_password_for_purchase': return userHandler.handlePasswordForPurchase(sender_psid, messageText, sendText);
                 case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID);
                 case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, messageText, sendText, ADMIN_ID);
                 case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, messageText, sendText);
