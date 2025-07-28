@@ -1,4 +1,4 @@
-// user_handler.js (Corrected with Admin "New Order" Notification)
+// user_handler.js (Corrected with claims_max = 3 and duplicate ref handling)
 const db = require('./database');
 const stateManager = require('./state_manager');
 
@@ -64,14 +64,18 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
     const { refNumber, modId, modName } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'yes') {
         try {
-            await db.addReference(refNumber, sender_psid, modId);
-            await sendText(sender_psid, `✅ Thank you for confirming! Your purchase of Mod ${modId} has been registered.`);
-            // --- NEW: Send notification to Admin ---
+            await db.addReference(refNumber, sender_psid, modId, 3); // <-- Pass 3 as claims_max
+            await sendText(sender_psid, `✅ Thank you for confirming! Your purchase of Mod ${modId} has been registered with 3 replacement claims. Please wait for the admin to reply!`);
             const adminNotification = `✅ New Order Registered!\n\nUser: ${sender_psid}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}`;
             await sendText(ADMIN_ID, adminNotification);
         } catch (e) {
-            await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
-            await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
+            if (e.message === 'Duplicate reference number') {
+                await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
+                await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
+            } else {
+                console.error(e);
+                await sendText(sender_psid, "An unexpected error occurred. An admin has been notified.");
+            }
         }
     } else {
         await sendText(sender_psid, "Okay, the transaction has been cancelled. If you made a mistake, please contact an admin.");
@@ -89,14 +93,18 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
         return;
     }
     try {
-        await db.addReference(refNumber, sender_psid, modId);
-        await sendText(sender_psid, `✅ Got it! Your purchase of Mod ${modId} has been registered.`);
-        // --- NEW: Send notification to Admin ---
+        await db.addReference(refNumber, sender_psid, modId, 3); // <-- Pass 3 as claims_max
+        await sendText(sender_psid, `✅ Got it! Your purchase of Mod ${modId} has been registered with 3 replacement claims.`);
         const adminNotification = `✅ New Order Registered!\n\nUser: ${sender_psid}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}`;
         await sendText(ADMIN_ID, adminNotification);
     } catch (e) {
-        await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
-        await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
+        if (e.message === 'Duplicate reference number') {
+            await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
+            await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
+        } else {
+            console.error(e);
+            await sendText(sender_psid, "An unexpected error occurred. An admin has been notified.");
+        }
     }
     stateManager.clearUserState(sender_psid);
 }
