@@ -1,12 +1,12 @@
-// payment_verifier.js (Node.js Version - Corrected Gemini API URL)
+// payment_verifier.js (Node.js Version - Updated to gemini-1.5-flash)
 const axios = require('axios');
 const fs = require('fs/promises'); // Using fs.promises for async file operations
 const sharp = require('sharp');
 const secrets = require('./secrets.js');
 
 const GEMINI_API_KEY = secrets.GEMINI_API_KEY;
-// --- THIS IS THE CORRECTED BASE_URL ---
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=";
+// --- THIS IS THE CORRECTED BASE_URL to use the new model ---
+const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
 
 
 const ANALYSIS_PROMPT = `
@@ -82,7 +82,6 @@ async function sendGeminiRequest(image_b64) {
             }]
         };
 
-        // --- NEW: Use the BASE_URL directly with the API key ---
         const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 45000 });
         
         if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
