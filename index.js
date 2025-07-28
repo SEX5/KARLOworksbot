@@ -1,116 +1,170 @@
-// user_handler.js (Corrected with Admin "New Order" Notification)
-const db = require('./database');
-const stateManager = require('./state_manager');
+// index.js (Truly Complete & Final - with all fixes and require statements)
+const express = require('express');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { execFile } = require('child_process');
 
-async function showUserMenu(sender_psid, sendText) {
-    const menu = `Welcome! Please select an option:\nType 1: View available mods\nType 2: Check remaining replacement accounts\nType 3: Request a replacement account\nType 4: Contact the admin`;
-    await sendText(sender_psid, menu);
-    stateManager.clearUserState(sender_psid);
+// --- THIS IS THE MISSING PART ---
+const dbManager = require('./database.js');
+const stateManager = require('./state_manager.js');
+const userHandler = require('./user_handler.js');
+const adminHandler = require('./admin_handler.js');
+const secrets = require('./secrets.js');
+const paymentVerifier = require('./payment_verifier.js');
+// --------------------------------
+
+const app = express();
+app.use(express.json());
+
+const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
+
+// --- UTILITY FUNCTIONS ---
+
+async function sendText(psid, text) {
+    const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    } catch (error) {
+        console.error("Error sending message:", error.response?.data || error.message);
+    }
 }
 
-// --- Type 1 Logic ---
-async function handleViewMods(sender_psid, sendText) {
-    const mods = await db.getMods();
-    if (!mods || mods.length === 0) return sendText(sender_psid, "There are currently no mods available.\nTo return to the menu, type \"Menu\".");
-    let response = "Available Mods:\n\n";
-    mods.forEach(mod => { response += `Mod ${mod.id}: ${mod.description || 'N/A'}\nPrice: ${mod.price} PHP | Stock: ${mod.stock}\nImage: ${mod.image_url || 'N/A'}\n\n`; });
-    response += `To purchase, type "Want Mod [Number]" (e.g., Want Mod 1).\nTo return to the menu, type "Menu".`;
-    await sendText(sender_psid, response);
-    stateManager.setUserState(sender_psid, 'awaiting_want_mod');
+// --- RECEIPT HANDLER ---
+async function handleReceiptSubmission(sender_psid, imageUrl) {
+    await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
+    try {
+        const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
+        const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+
+        const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
+        if (!image_b64) throw new Error("Failed to encode image.");
+
+        const analysis = await paymentVerifier.sendGeminiRequest(image_b64);
+        if (!analysis) throw new Error("AI analysis failed.");
+        
+        const receiptsDir = path.join(__dirname, 'receipts');
+        if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
+        const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
+        fs.writeFileSync(imagePath, imageBuffer);
+        
+        await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
+
+    } catch (error) {
+        console.error("Error in handleReceiptSubmission:", error.message);
+        await sendText(ADMIN_ID, `Admin Alert: Receipt analysis failed for user ${sender_psid}.`);
+        await sendText(sender_psid, "Sorry, there was an issue analyzing your receipt. An admin has been notified.");
+    }
 }
 
-async function handleWantMod(sender_psid, text, sendText) {
-    const modId = parseInt(text.replace('want mod', '').trim());
-    if (isNaN(modId)) return sendText(sender_psid, "Invalid format. Please type 'Want Mod [Number]'.");
-    const mod = await db.getModById(modId);
-    if (!mod) return sendText(sender_psid, "Invalid mod number. Please select a valid mod from the list.");
-    const adminInfo = await db.getAdminInfo();
-    const gcashNumber = adminInfo?.gcash_number || "not set by admin";
-    await sendText(sender_psid, `You selected Mod ${mod.id}. Please send payment of ${mod.price} PHP to this GCash number: ${gcashNumber}.\nAfter payment, send your receipt screenshot to confirm.`);
-    stateManager.clearUserState(sender_psid);
-}
+// --- MAIN MESSAGE ROUTER ---
 
-// --- Automated Receipt Flow ---
-async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) {
-    const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
-    const amount = parseFloat(amountStr);
-    const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
+async function handleMessage(sender_psid, webhook_event) {
+    const messageText = webhook_event.message?.text?.trim();
+    const lowerCaseText = messageText?.toLowerCase();
 
-    if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
-        await sendText(sender_psid, "I couldn't clearly read the amount or a valid 13-digit reference number from that receipt. An admin has been notified to assist you.");
-        await sendText(ADMIN_ID, `User ${sender_psid} sent a receipt, but AI failed to extract valid info. Amount found: ${amountStr}, Ref found: ${refNumber}. Please check manually.`);
+    // --- Special Setup/Debug Commands ---
+    if (lowerCaseText === 'setup admin') {
+        if (sender_psid === ADMIN_ID) {
+            await dbManager.updateAdminInfo(sender_psid, "09xx-xxx-xxxx");
+            await sendText(sender_psid, "✅ You have been successfully registered as the admin!");
+            return adminHandler.showAdminMenu(sender_psid, sendText);
+        } else {
+            return sendText(sender_psid, "You are not authorized to perform this setup.");
+        }
+    }
+    if (lowerCaseText === 'my id') {
+        return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`);
+    }
+
+    // --- Regular Bot Logic ---
+    const isAdmin = await dbManager.isAdmin(sender_psid);
+    const userStateObj = stateManager.getUserState(sender_psid);
+
+    if (webhook_event.message?.attachments?.[0].type === 'image') {
+        const imageUrl = webhook_event.message.attachments[0].payload.url;
+        await handleReceiptSubmission(sender_psid, imageUrl);
         return;
     }
 
-    const matchingMods = await db.getModsByPrice(amount);
+    if (!messageText) return;
 
-    if (matchingMods.length === 1) {
-        const mod = matchingMods[0];
-        await sendText(sender_psid, `I see a payment of ${amount} PHP. Did you purchase Mod ${mod.id} (${mod.name})?\n\nPlease reply with "Yes" or "No".`);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name });
-    } else if (matchingMods.length > 1) {
-        let response = `I see a payment of ${amount} PHP, which matches multiple mods:\n\n`;
-        matchingMods.forEach(m => { response += `- Mod ${m.id}: ${m.name}\n`; });
-        response += "\nPlease type the number of the mod you purchased (e.g., '1').";
-        await sendText(sender_psid, response);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber });
-    } else {
-        await sendText(sender_psid, `I received your payment of ${amount} PHP, but I could not find a mod with that exact price. An admin has been notified and will assist you shortly.`);
-        await sendText(ADMIN_ID, `User ${sender_psid} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
+    if (lowerCaseText === 'menu') {
+        stateManager.clearUserState(sender_psid);
+        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText);
     }
-}
-
-async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
-    const { refNumber, modId, modName } = stateManager.getUserState(sender_psid);
-    if (text.toLowerCase() === 'yes') {
-        try {
-            await db.addReference(refNumber, sender_psid, modId);
-            await sendText(sender_psid, `✅ Thank you for confirming! Your purchase of Mod ${modId} has been registered.`);
-            // --- NEW: Send notification to Admin ---
-            const adminNotification = `✅ New Order Registered!\n\nUser: ${sender_psid}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}`;
-            await sendText(ADMIN_ID, adminNotification);
-        } catch (e) {
-            await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
-            await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
+    
+    if (isAdmin) {
+        const state = userStateObj?.state;
+        if (state) {
+            switch (state) {
+                case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
+                case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
+                case 'awaiting_edit_mod': return adminHandler.processEditMod(sender_psid, messageText, sendText);
+                case 'awaiting_add_ref': return adminHandler.processAddRef(sender_psid, messageText, sendText);
+                case 'awaiting_edit_admin': return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
+                case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
+                case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
+            }
+        }
+        switch (lowerCaseText) {
+            case '1': return adminHandler.handleViewReferences(sender_psid, sendText);
+            case '2': return adminHandler.promptForBulkAccounts_Step1_ModId(sender_psid, sendText);
+            case '3': return adminHandler.promptForEditMod(sender_psid, sendText);
+            case '4': return adminHandler.promptForAddRef(sender_psid, sendText);
+            case '5': return adminHandler.promptForEditAdmin(sender_psid, sendText);
+            case '6': return adminHandler.promptForEditRef(sender_psid, sendText);
+            case '7': return adminHandler.promptForAddMod(sender_psid, sendText);
+            default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
     } else {
-        await sendText(sender_psid, "Okay, the transaction has been cancelled. If you made a mistake, please contact an admin.");
+        const state = userStateObj?.state;
+        if (state) {
+            switch (state) {
+                case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID);
+                case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, messageText, sendText, ADMIN_ID);
+                case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, messageText, sendText);
+                case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, messageText, sendText);
+                case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, messageText, sendText);
+                case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, messageText, sendText, ADMIN_ID);
+            }
+        }
+        switch (lowerCaseText) {
+            case '1': return userHandler.handleViewMods(sender_psid, sendText);
+            case '2': return userHandler.promptForCheckClaims(sender_psid, sendText);
+            case '3': return userHandler.promptForReplacement(sender_psid, sendText);
+            case '4': return userHandler.promptForAdminMessage(sender_psid, sendText);
+            default: return userHandler.showUserMenu(sender_psid, sendText);
+        }
     }
-    stateManager.clearUserState(sender_psid);
 }
 
-async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
-    const { refNumber } = stateManager.getUserState(sender_psid);
-    const modId = parseInt(text.trim());
-    const mod = await db.getModById(modId);
+// --- SERVER SETUP AND START ---
 
-    if (isNaN(modId) || !mod) {
-        await sendText(sender_psid, "That's not a valid Mod ID. Please type just the number of the mod you purchased.");
-        return;
-    }
+async function startServer() {
     try {
-        await db.addReference(refNumber, sender_psid, modId);
-        await sendText(sender_psid, `✅ Got it! Your purchase of Mod ${modId} has been registered.`);
-        // --- NEW: Send notification to Admin ---
-        const adminNotification = `✅ New Order Registered!\n\nUser: ${sender_psid}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}`;
-        await sendText(ADMIN_ID, adminNotification);
-    } catch (e) {
-        await sendText(sender_psid, "This reference number appears to have already been used. An admin has been notified.");
-        await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
-    }
-    stateManager.clearUserState(sender_psid);
+        await dbManager.setupDatabase();
+        app.get('/', (req, res) => { res.status(200).send('Bot is online and healthy.'); });
+        app.get('/webhook', (req, res) => {
+            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
+            if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+                console.log("Webhook verified successfully!");
+                res.status(200).send(challenge);
+            } else { res.sendStatus(403); }
+        });
+        app.post('/webhook', (req, res) => {
+            if (req.body.object === 'page') {
+                req.body.entry.forEach(entry => {
+                    const event = entry.messaging[0];
+                    if (event?.sender?.id && event.message) { handleMessage(event.sender.id, event); }
+                });
+                res.status(200).send('EVENT_RECEIVED');
+            } else { res.sendStatus(404); }
+        });
+        const PORT = process.env.PORT || 3000;
+        const HOST = '0.0.0.0';
+        app.listen(PORT, HOST, () => { console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); });
+    } catch (error) { console.error("Server failed to start:", error); }
 }
 
-// --- Type 2 (was 3) ---
-async function promptForCheckClaims(sender_psid, sendText) { await sendText(sender_psid, "Please provide your 13-digit GCash reference number to check remaining replacement accounts."); stateManager.setUserState(sender_psid, 'awaiting_ref_for_check'); }
-async function processCheckClaims(sender_psid, refNumber, sendText) { if (!/^\d{13}$/.test(refNumber)) return sendText(sender_psid, "Invalid reference number format."); const ref = await db.getReference(refNumber); if (!ref) { await sendText(sender_psid, "This reference number was not found."); } else { const remaining = ref.claims_max - ref.claims_used; await sendText(sender_psid, `You have ${remaining} replacement account(s) left for Mod ${ref.mod_id} (${ref.mod_name}).`); } stateManager.clearUserState(sender_psid); }
-
-// --- Type 3 (was 4) ---
-async function promptForReplacement(sender_psid, sendText) { await sendText(sender_psid, "Please provide your 13-digit GCash reference number to request a replacement account."); stateManager.setUserState(sender_psid, 'awaiting_ref_for_replacement'); }
-async function processReplacementRequest(sender_psid, refNumber, sendText) { if (!/^\d{13}$/.test(refNumber)) return sendText(sender_psid, "Invalid reference number format."); const ref = await db.getReference(refNumber); if (!ref || ref.claims_used >= ref.claims_max) { await sendText(sender_psid, "No replacement accounts available for this reference number."); stateManager.clearUserState(sender_psid); return; } const account = await db.getAvailableAccount(ref.mod_id); if (!account) { await sendText(sender_psid, "Sorry, no replacement accounts are in stock for your mod. Please contact an admin."); stateManager.clearUserState(sender_psid); return; } await db.claimAccount(account.id); await db.useClaim(ref.ref_number); await sendText(sender_psid, `Here is your replacement account for Mod ${ref.mod_id}:\nUsername: \`${account.username}\`\nPassword: \`${account.password}\``); stateManager.clearUserState(sender_psid); }
-
-// --- Type 4 (was 5) ---
-async function promptForAdminMessage(sender_psid, sendText) { await sendText(sender_psid, "Please provide your message for the admin, and it will be forwarded."); stateManager.setUserState(sender_psid, 'awaiting_admin_message'); }
-async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID) { const forwardMessage = `Message from user ${sender_psid}:\n\n"${text}"`; await sendText(ADMIN_ID, forwardMessage); await sendText(sender_psid, "Your message has been sent to the admin. You will be contacted soon."); stateManager.clearUserState(sender_psid); }
-
-module.exports = { showUserMenu, handleViewMods, handleWantMod, handleReceiptAnalysis, handleModConfirmation, handleModClarification, promptForCheckClaims, processCheckClaims, promptForReplacement, processReplacementRequest, promptForAdminMessage, forwardMessageToAdmin };
+startServer();
