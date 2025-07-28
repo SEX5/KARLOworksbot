@@ -1,8 +1,8 @@
-// admin_handler.js (Complete & Final with Conversational Add Reference)
+// admin_handler.js (Complete & Final with "Edit Name" feature)
 const db = require('./database');
 const stateManager = require('./state_manager');
 
-const REFERENCES_PER_PAGE = 10;
+const REFERENCES_PER_PAGE = 10; // You can adjust this number
 
 async function showAdminMenu(sender_psid, sendText) {
     const menu = `Admin Menu:\nType 1: View reference numbers\nType 2: Add bulk accounts\nType 3: Edit mod details\nType 4: Add a reference number\nType 5: Edit admin info\nType 6: Edit reference numbers\nType 7: Add a new mod`;
@@ -79,7 +79,7 @@ async function processBulkAccounts_Step3_SaveAccounts(sender_psid, text, sendTex
     }
 }
 
-// --- Type 3 ---
+// --- UPDATED "Type 3" ---
 async function promptForEditMod_Step1_ModId(sender_psid, sendText) {
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
@@ -99,7 +99,7 @@ async function processEditMod_Step2_AskDetail(sender_psid, text, sendText) {
         await sendText(sender_psid, "Invalid Mod ID. Please try again or type 'Menu' to cancel.");
         return;
     }
-    const response = `Editing Mod ${mod.id} (${mod.name}).\n\nCurrent Details:\n- Description: ${mod.description}\n- Price: ${mod.price}\n- Image: ${mod.image_url}\n\nWhat would you like to change? Reply with 'description', 'price', or 'image'.`;
+    const response = `Editing Mod ${mod.id} (${mod.name}).\n\nCurrent Details:\n- Name: ${mod.name}\n- Description: ${mod.description}\n- Price: ${mod.price}\n- Image: ${mod.image_url}\n\nWhat would you like to change? Reply with 'name', 'description', 'price', or 'image'.`;
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'awaiting_edit_mod_detail_choice', { modId });
 }
@@ -107,8 +107,8 @@ async function processEditMod_Step2_AskDetail(sender_psid, text, sendText) {
 async function processEditMod_Step3_AskValue(sender_psid, text, sendText) {
     const detailToChange = text.trim().toLowerCase();
     const { modId } = stateManager.getUserState(sender_psid);
-    if (!['description', 'price', 'image'].includes(detailToChange)) {
-        await sendText(sender_psid, "Invalid choice. Please reply with 'description', 'price', or 'image'.");
+    if (!['name', 'description', 'price', 'image'].includes(detailToChange)) {
+        await sendText(sender_psid, "Invalid choice. Please reply with 'name', 'description', 'price', or 'image'.");
         return;
     }
     await sendText(sender_psid, `What is the new ${detailToChange} for Mod ${modId}?`);
@@ -120,12 +120,15 @@ async function processEditMod_Step4_SaveValue(sender_psid, text, sendText) {
     const { modId, detailToChange } = stateManager.getUserState(sender_psid);
     const detailsToUpdate = {};
     const fieldName = detailToChange === 'image' ? 'image_url' : detailToChange;
+    
     if (detailToChange === 'price' && isNaN(parseFloat(newValue))) {
         await sendText(sender_psid, "Invalid price. Please enter a number.");
         stateManager.setUserState(sender_psid, 'awaiting_edit_mod_new_value', { modId, detailToChange });
         return;
     }
+    
     detailsToUpdate[fieldName] = detailToChange === 'price' ? parseFloat(newValue) : newValue;
+
     try {
         await db.updateModDetails(modId, detailsToUpdate);
         await sendText(sender_psid, `✅ The ${detailToChange} for Mod ${modId} has been updated.\n\nWould you like to edit another detail for this mod? (Yes / No)`);
@@ -141,7 +144,7 @@ async function processEditMod_Step5_Continue(sender_psid, text, sendText) {
     const { modId } = stateManager.getUserState(sender_psid);
     if (choice === 'yes') {
         const mod = await db.getModById(modId);
-        const response = `What else would you like to change for Mod ${mod.id}?\nReply with 'description', 'price', or 'image'.`;
+        const response = `What else would you like to change for Mod ${mod.id}?\nReply with 'name', 'description', 'price', or 'image'.`;
         await sendText(sender_psid, response);
         stateManager.setUserState(sender_psid, 'awaiting_edit_mod_detail_choice', { modId });
     } else {
@@ -150,7 +153,7 @@ async function processEditMod_Step5_Continue(sender_psid, text, sendText) {
     }
 }
 
-// --- NEW CONVERSATIONAL "Type 4" ---
+// --- Type 4 ---
 async function promptForAddRef_Step1_GetRef(sender_psid, sendText) {
     await sendText(sender_psid, "Please provide the 13-digit GCash reference number you want to add.");
     stateManager.setUserState(sender_psid, 'awaiting_add_ref_number');
