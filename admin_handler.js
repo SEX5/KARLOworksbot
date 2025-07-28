@@ -1,6 +1,7 @@
-// admin_handler.js (Corrected with claims_max = 3)
+// admin_handler.js (Updated to show user names)
 const db = require('./database');
 const stateManager = require('./state_manager');
+const messengerApi = require('./messenger_api.js');
 
 async function showAdminMenu(sender_psid, sendText) {
     const menu = `Admin Menu:\nType 1: View reference numbers\nType 2: Add bulk accounts\nType 3: Edit mod details\nType 4: Add a reference number\nType 5: Edit admin info\nType 6: Edit reference numbers\nType 7: Add a new mod`;
@@ -8,20 +9,21 @@ async function showAdminMenu(sender_psid, sendText) {
     stateManager.clearUserState(sender_psid);
 }
 
-// --- Type 1 ---
 async function handleViewReferences(sender_psid, sendText) {
     const refs = await db.getAllReferences();
     if (!refs || refs.length === 0) {
         return sendText(sender_psid, "No reference numbers have been submitted yet.\nTo return to the admin menu, type \"Menu\".");
     }
+    
     let response = "Reference Numbers Log:\n\n";
-    refs.forEach(r => {
-        response += `Ref: ${r.ref_number}\nMod: ${r.mod_name}\nUser: ${r.user_id}\nClaims: ${r.claims_used}/${r.claims_max}\n\n`;
-    });
+    for (const r of refs) {
+        const userName = await messengerApi.getUserProfile(r.user_id);
+        response += `Ref: ${r.ref_number}\nMod: ${r.mod_name}\nPurchased by: ${userName} (${r.user_id})\nClaims: ${r.claims_used}/${r.claims_max}\n\n`;
+    }
+    
     await sendText(sender_psid, response);
 }
 
-// --- Type 2 ---
 async function promptForBulkAccounts_Step1_ModId(sender_psid, sendText) {
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
@@ -72,7 +74,6 @@ async function processBulkAccounts_Step3_SaveAccounts(sender_psid, text, sendTex
     }
 }
 
-// --- Type 3 ---
 async function promptForEditMod(sender_psid, sendText) {
     await sendText(sender_psid, `Specify the mod to edit and the new details.\nFormat: Mod [ID], Description: New desc, Price: 150, Image: http://link`);
     stateManager.setUserState(sender_psid, 'awaiting_edit_mod');
@@ -106,7 +107,6 @@ async function processEditMod(sender_psid, text, sendText) {
     }
 }
 
-// --- Type 4 ---
 async function promptForAddRef(sender_psid, sendText) {
     await sendText(sender_psid, `Provide the 13-digit GCash ref, user ID, and mod ID.\nFormat: [ref_number], [user_id], Mod [ID]`);
     stateManager.setUserState(sender_psid, 'awaiting_add_ref');
@@ -119,7 +119,7 @@ async function processAddRef(sender_psid, text, sendText) {
         if (!/^\d{13}$/.test(ref) || !userId || isNaN(modId) || !(await db.getModById(modId))) {
             throw new Error("Invalid format, User ID, or Mod ID.");
         }
-        await db.addReference(ref, userId, modId, 3); // <-- Pass 3 as claims_max
+        await db.addReference(ref, userId, modId, 3);
         await sendText(sender_psid, "Reference number added successfully with 3 replacement claims.");
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
@@ -132,7 +132,6 @@ async function processAddRef(sender_psid, text, sendText) {
     }
 }
 
-// --- Type 5 ---
 async function promptForEditAdmin(sender_psid, sendText) {
     await sendText(sender_psid, `Provide new admin info.\nFormat: Facebook ID: [New ID], GCash Number: [New Number]`);
     stateManager.setUserState(sender_psid, 'awaiting_edit_admin');
@@ -153,7 +152,6 @@ async function processEditAdmin(sender_psid, text, sendText) {
     }
 }
 
-// --- Type 6 ---
 async function promptForEditRef(sender_psid, sendText) {
     await sendText(sender_psid, `Provide the ref number and the new mod ID.\nFormat: [ref_number], Mod [ID]`);
     stateManager.setUserState(sender_psid, 'awaiting_edit_ref');
@@ -174,7 +172,6 @@ async function processEditRef(sender_psid, text, sendText) {
     }
 }
 
-// --- Type 7 ---
 async function promptForAddMod(sender_psid, sendText) {
     await sendText(sender_psid, `Provide the new mod details.\nFormat: ID, Name, Description, Price, ImageURL\n\nExample: 1, VIP Mod, Unlocks all features, 250, http://image.link/vip.png`);
     stateManager.setUserState(sender_psid, 'awaiting_add_mod');
