@@ -1,14 +1,14 @@
 {
-  "name": "render-turso-bot-final-fix",
+  "name": "render-neon-bot-final",
   "version": "1.0.0",
-  "description": "A Messenger bot on Render with Turso using a compatible driver.",
+  "description": "A Messenger bot on Render with a Neon PostgreSQL database.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "axios": "^1.7.2",
-    "better-sqlite3": "^11.1.2",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "pg": "^8.12.0"
   }
 }
