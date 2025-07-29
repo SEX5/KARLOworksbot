@@ -1,4 +1,4 @@
-// index.js (Updated to handle manual fallback flow)
+// index.js (Final Version with new admin option '8')
 const express = require('express');
 const axios = require('axios');
 const { execFile } = require('child_process');
@@ -19,7 +19,7 @@ const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
 
 async function sendText(psid, text) {
     const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
-    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); }
+    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); } 
     catch (error) { console.error("Error sending text message:", error.response?.data || error.message); }
 }
 
@@ -33,7 +33,6 @@ async function sendImage(psid, imageUrl) {
     catch (error) { console.error("Error sending image message:", error.response?.data || error.message); }
 }
 
-// --- UPDATED ERROR HANDLING ---
 async function handleReceiptSubmission(sender_psid, imageUrl) {
     await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
     try {
@@ -41,24 +40,18 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
-        
         const analysis = await paymentVerifier.sendGeminiRequest(image_b64);
         if (!analysis) throw new Error("AI analysis returned null.");
-        
         const receiptsDir = path.join(__dirname, 'receipts');
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
         fs.writeFileSync(imagePath, imageBuffer);
-        
         await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
     } catch (error) {
         console.error("Error in handleReceiptSubmission, starting manual flow:", error.message);
-        // --- THIS IS THE NEW LOGIC ---
-        // Instead of notifying the admin, we start the manual fallback conversation.
         await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl);
     }
 }
-
 
 async function handleMessage(sender_psid, webhook_event) {
     const messageText = webhook_event.message?.text?.trim();
@@ -85,7 +78,6 @@ async function handleMessage(sender_psid, webhook_event) {
         await handleReceiptSubmission(sender_psid, imageUrl);
         return;
     }
-
     if (!messageText) return;
 
     if (lowerCaseText === 'menu') {
@@ -94,15 +86,10 @@ async function handleMessage(sender_psid, webhook_event) {
     }
     
     if (isAdmin) {
-        // ... (Admin logic remains unchanged) ...
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
-                case 'viewing_references':
-                    const currentPage = userStateObj.page || 1;
-                    if (lowerCaseText === '1') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage + 1);
-                    if (lowerCaseText === '2') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage - 1);
-                    break;
+                case 'viewing_references': const currentPage = userStateObj.page || 1; if (lowerCaseText === '1') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage + 1); if (lowerCaseText === '2') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage - 1); break;
                 case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_edit_mod_id': return adminHandler.processEditMod_Step2_AskDetail(sender_psid, messageText, sendText);
@@ -114,6 +101,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_edit_admin': return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
                 case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
                 case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
+                case 'awaiting_delete_ref': return adminHandler.processDeleteRef(sender_psid, messageText, sendText);
             }
         }
         switch (lowerCaseText) {
@@ -124,17 +112,15 @@ async function handleMessage(sender_psid, webhook_event) {
             case '5': return adminHandler.promptForEditAdmin(sender_psid, sendText);
             case '6': return adminHandler.promptForEditRef(sender_psid, sendText);
             case '7': return adminHandler.promptForAddMod(sender_psid, sendText);
+            case '8': return adminHandler.promptForDeleteRef(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
     } else {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
-                // --- NEW STATES FOR MANUAL FALLBACK ---
                 case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, messageText, sendText);
                 case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, messageText, sendText, sendImage, ADMIN_ID);
-                
-                // --- Original States ---
                 case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, messageText, sendText);
                 case 'awaiting_password_for_purchase': return userHandler.handlePasswordForPurchase(sender_psid, messageText, sendText);
                 case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID);
