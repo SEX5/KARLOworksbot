@@ -1,4 +1,4 @@
-// database.js (With new deleteReference function)
+// database.js (Final Version with deleteReference)
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
@@ -41,7 +41,6 @@ async function deleteReference(refNumber) {
     const res = await getDb().query('DELETE FROM "references" WHERE ref_number = $1', [refNumber]);
     return res.rowCount; // Will be 1 if deleted, 0 if not found
 }
-
 
 async function isAdmin(userId) { const res = await getDb().query('SELECT * FROM admins WHERE user_id = $1', [userId]); return res.rows[0] || null; }
 async function getAdminInfo() { const res = await getDb().query('SELECT * FROM admins LIMIT 1'); return res.rows[0] || null; }
