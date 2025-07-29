@@ -5,7 +5,7 @@ const stateManager = require('./state_manager');
 const REFERENCES_PER_PAGE = 10;
 
 async function showAdminMenu(sender_psid, sendText) {
-    const menu = `Admin Menu:\nType 1: View reference numbers\nType 2: Add bulk accounts\nType 3: Edit mod details\nType 4: Add a reference number\nType 5: Edit admin info\nType 6: Edit reference numbers\nType 7: Add a new mod\nType 8: Delete a reference number`;
+    const menu = `Admin Menu:\nType 1: 👁️View reference numbers\nType 2: ➕Add bulk accounts\nType 3: 🖱️Edit mod details\nType 4: ➕Add a reference number\nType 5: 🖱️Edit admin info\nType 6: 🖱️Edit reference numbers\nType 7: ➕Add a new mod\nType 8: Delete a reference number`;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
 }
