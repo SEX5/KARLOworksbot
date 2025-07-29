@@ -32,7 +32,7 @@ async function handleManualReference(sender_psid, text, sendText) {
     const refNumber = text.trim();
     if (!/^\d{13}$/.test(refNumber)) {
         await sendText(sender_psid, `❌ That doesn't look like a valid 13-digit reference number.
-Please double-check and try again. Example: *1234567890123*`);
+Please double-check and try again. Example: 1234567890123`);
         return;
     }
 
@@ -50,11 +50,11 @@ Which *Mod* did you purchase? Here are the available options:
 
 `;
     mods.forEach(mod => {
-        response += `🔹 *Mod ${mod.id}:* ${mod.name}
+        response += `🔹 Mod ${mod.id}: ${mod.name}
    💰 Price: ${mod.price} PHP | 📦 Stock: ${mod.stock}
 `;
     });
-    response += `\n👉 Please reply with just the *Mod number* (e.g., *1*)`;
+    response += `\n👉 Please reply with just the Mod number (e.g., 1)`;
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'awaiting_manual_mod', { imageUrl, refNumber });
 }
@@ -115,17 +115,17 @@ Here’s what you can get right now:
 
     mods.forEach(mod => {
         response += `
-📦 *Mod ${mod.id}:* ${mod.description || 'N/A'}
-💰 *Price:* ${mod.price} PHP
-📦 *Stock:* ${mod.stock} ${mod.stock > 0 ? '🟢' : '🔴'}
-🖼️ *Image:* ${mod.image_url ? '[View Image]' : 'Not available'}
+📦 Mod ${mod.id}: ${mod.description || 'N/A'}
+💰 Price: ${mod.price} PHP
+📦 Stock: ${mod.stock} ${mod.stock > 0 ? '🟢' : '🔴'}
+🖼️ Image: ${mod.image_url || 'N/A'}
 `;
     });
 
     response += `
 
-💡 To purchase, type: *Want Mod [Number]* (e.g., *Want Mod 1*)
-🔙 To return to the menu, type: *Menu*`;
+💡 To purchase, Please reply with just the Mod number (e.g., 1)
+🔙 To return to the menu, type: Menu`;
 
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'awaiting_want_mod');
@@ -135,7 +135,7 @@ Here’s what you can get right now:
 async function handleWantMod(sender_psid, text, sendText) {
     const modId = parseInt(text.replace('want mod', '').trim());
     if (isNaN(modId)) {
-        return sendText(sender_psid, `❌ Invalid format. Please type *Want Mod [Number]* (e.g., *Want Mod 1*).`);
+        return sendText(sender_psid, `❌ Invalid format. Please type Want Mod [Number] (e.g., Want Mod 1).`);
     }
 
     const mod = await db.getModById(modId);
@@ -143,16 +143,16 @@ async function handleWantMod(sender_psid, text, sendText) {
         return sendText(sender_psid, `❌ Invalid mod number. Please select a valid mod from the list.`);
     }
 
-    await sendText(sender_psid, `✅ You selected *Mod ${mod.id}: ${mod.name}*!
+    await sendText(sender_psid, `✅ You selected Mod ${mod.id}: ${mod.name}!
 
-Before we proceed, please provide the *email* for your account.`);
+Before we proceed, please provide the email for your account.`);
     stateManager.setUserState(sender_psid, 'awaiting_email_for_purchase', { modId: mod.id });
 }
 
 async function handleEmailForPurchase(sender_psid, text, sendText) {
     const { modId } = stateManager.getUserState(sender_psid);
     const email = text.trim();
-    await sendText(sender_psid, `📧 Got it! Now, please enter the *password* for the account.`);
+    await sendText(sender_psid, `📧 Got it! Now, please enter the password for the account.`);
     stateManager.setUserState(sender_psid, 'awaiting_password_for_purchase', { modId, email });
 }
 
@@ -163,12 +163,12 @@ async function handlePasswordForPurchase(sender_psid, text, sendText) {
     const adminInfo = await db.getAdminInfo();
     const gcashNumber = adminInfo?.gcash_number || "Not set";
 
-    await sendText(sender_psid, `🎉 *You're all set!* 
+    await sendText(sender_psid, `🎉 You're all set! 
 
-Please send *${mod.price} PHP* via GCash to:
-📞 **${gcashNumber}**
+Please send ${mod.price} PHP via GCash to:
+📞 ${gcashNumber}
 
-📲 After paying, send a *screenshot of your receipt* to confirm your purchase.
+📲 After paying, send a screenshot of your receipt to confirm your purchase.
 
 We’ll verify and deliver your mod ASAP! ⏳💙`);
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, password });
@@ -197,10 +197,10 @@ Don’t worry — an admin has been notified and will assist you shortly! 🙏`)
             confirmationStateData.password = precollectedState.password;
         }
 
-        await sendText(sender_psid, `💳 I see a payment of *${amount} PHP*.
+        await sendText(sender_psid, `💳 I see a payment of ${amount} PHP.
 
-Did you purchase *Mod ${mod.id}: ${mod.name}*? 
-✅ Reply with *Yes* or *No* to confirm.`);
+Did you purchase Mod ${mod.id}: ${mod.name}? 
+✅ Reply with Yes or No to confirm.`);
         stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', confirmationStateData);
     } else if (matchingMods.length > 1) {
         let clarificationStateData = { refNumber };
@@ -209,7 +209,7 @@ Did you purchase *Mod ${mod.id}: ${mod.name}*?
             clarificationStateData.password = precollectedState.password;
         }
 
-        let response = `🔍 I see a payment of *${amount} PHP*, which matches multiple mods:
+        let response = `🔍 I see a payment of ${amount} PHP, which matches multiple mods:
 
 `;
         matchingMods.forEach(m => {
@@ -221,7 +221,7 @@ Please type the number of the mod you purchased (e.g., *1*).`;
         await sendText(sender_psid, response);
         stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', clarificationStateData);
     } else {
-        await sendText(sender_psid, `💳 I received your payment of *${amount} PHP*, but no mod matches this price.
+        await sendText(sender_psid, `💳 I received your payment of ${amount} PHP, but no mod matches this price.
 An admin has been notified and will assist you shortly. 🙌`);
         await sendText(ADMIN_ID, `User ${sender_psid} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
     }
@@ -234,7 +234,7 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
     if (text.toLowerCase() === 'yes') {
         try {
             await db.addReference(refNumber, sender_psid, modId, 3);
-            await sendText(sender_psid, `✅ *Thank you!* Your purchase of *Mod ${modId}* has been registered with *3 replacement claims*.`);
+            await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered with 3 replacement claims.`);
 
             const userName = await messengerApi.getUserProfile(sender_psid);
             let adminNotification = `✅ New Order Registered!
@@ -272,13 +272,13 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
     const mod = await db.getModById(modId);
 
     if (isNaN(modId) || !mod) {
-        await sendText(sender_psid, `❌ That's not a valid Mod number. Please reply with just the number (e.g., *1*).`);
+        await sendText(sender_psid, `❌ That's not a valid Mod number. Please reply with just the number (e.g., 1).`);
         return;
     }
 
     try {
         await db.addReference(refNumber, sender_psid, modId, 3);
-        await sendText(sender_psid, `✅ *Got it!* Your purchase of *Mod ${modId}* has been registered with *3 replacement claims*. 🎉`);
+        await sendText(sender_psid, `✅ Got it! Your purchase of *Mod ${modId}* has been registered with *3 replacement claims*. 🎉`);
 
         const userName = await messengerApi.getUserProfile(sender_psid);
         let adminNotification = `✅ New Order Registered!
@@ -308,7 +308,7 @@ Ref No: ${refNumber}`;
 async function promptForCheckClaims(sender_psid, sendText) {
     await sendText(sender_psid, `🔍 Want to check how many replacements you have left?
 
-Please enter your *13-digit GCash reference number*:`);
+Please enter your 13-digit GCash reference number:`);
     stateManager.setUserState(sender_psid, 'awaiting_ref_for_check');
 }
 
@@ -322,7 +322,7 @@ async function processCheckClaims(sender_psid, refNumber, sendText) {
         await sendText(sender_psid, `🔍 No purchase found with that reference number. Please double-check.`);
     } else {
         const remaining = ref.claims_max - ref.claims_used;
-        await sendText(sender_psid, `🎉 You have *${remaining}* replacement account(s) left for *Mod ${ref.mod_id}* (${ref.mod_name}).`);
+        await sendText(sender_psid, `🎉 You have ${remaining} replacement account(s) left for Mod ${ref.mod_id} (${ref.mod_name}).`);
     }
     stateManager.clearUserState(sender_psid);
 }
@@ -331,7 +331,7 @@ async function processCheckClaims(sender_psid, refNumber, sendText) {
 async function promptForReplacement(sender_psid, sendText) {
     await sendText(sender_psid, `🔁 Ready for a replacement?
 
-Please provide your *13-digit GCash reference number*:`);
+Please provide your 13-digit GCash reference number:`);
     stateManager.setUserState(sender_psid, 'awaiting_ref_for_replacement');
 }
 
@@ -358,9 +358,9 @@ An admin will restock soon — please contact them for updates.`);
     await db.claimAccount(account.id);
     await db.useClaim(ref.ref_number);
 
-    await sendText(sender_psid, `🎉 *Here’s your replacement account!* 
+    await sendText(sender_psid, `🎉 Here’s your replacement account! 
 
-🎮 Mod: *${ref.mod_id}*
+🎮 Mod: ${ref.mod_id}
 📧 Username: \`${account.username}\`
 🔐 Password: \`${account.password}\`
 
@@ -378,7 +378,7 @@ Please type your message, and I’ll forward it to the admin right away!`);
 
 async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID) {
     const userName = await messengerApi.getUserProfile(sender_psid);
-    const forwardMessage = `📩 *Message from user* ${userName} (${sender_psid}):
+    const forwardMessage = `📩 Message from user ${userName} (${sender_psid}):
 "${text}"`;
 
     await sendText(ADMIN_ID, forwardMessage);
