@@ -1,4 +1,4 @@
-// index.js (Final Version with new admin option '8')
+// index.js (Final Corrected Version - Based on your file with Smart Receipt Flow)
 const express = require('express');
 const axios = require('axios');
 const { execFile } = require('child_process');
@@ -19,7 +19,7 @@ const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
 
 async function sendText(psid, text) {
     const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
-    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); } 
+    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); }
     catch (error) { console.error("Error sending text message:", error.response?.data || error.message); }
 }
 
@@ -38,17 +38,24 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
     try {
         const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+        
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
+
         const analysis = await paymentVerifier.sendGeminiRequest(image_b64);
         if (!analysis) throw new Error("AI analysis returned null.");
+        
+        // Save image permanently for records
         const receiptsDir = path.join(__dirname, 'receipts');
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
-        const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
-        fs.writeFileSync(imagePath, imageBuffer);
+        fs.writeFileSync(path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`), imageBuffer);
+        
+        // Delegate the logic to the new smart handler
         await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
+
     } catch (error) {
         console.error("Error in handleReceiptSubmission, starting manual flow:", error.message);
+        // Fallback to manual entry if AI fails
         await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl);
     }
 }
@@ -118,6 +125,7 @@ async function handleMessage(sender_psid, webhook_event) {
     } else {
         const state = userStateObj?.state;
         if (state) {
+            // --- UPDATED to include all new user states ---
             switch (state) {
                 case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, messageText, sendText);
                 case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, messageText, sendText, sendImage, ADMIN_ID);
@@ -131,6 +139,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, messageText, sendText, ADMIN_ID);
             }
         }
+        // --- UPDATED to remove old Type 2 ---
         switch (lowerCaseText) {
             case '1': return userHandler.handleViewMods(sender_psid, sendText);
             case '2': return userHandler.promptForCheckClaims(sender_psid, sendText);
