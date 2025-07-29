@@ -4,7 +4,7 @@ const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
 
 async function showUserMenu(sender_psid, sendText) {
-    const menu = `Welcome! Please select an option:\nType 1: View available mods\nType 2: Check remaining replacement accounts\nType 3: Request a replacement account\nType 4: Contact the admin`;
+    const menu = `🌟 Welcome! Please select an option🌟:\nType 1: 👁️View available mods\nType 2: ✅Check remaining replacement accounts\nType 3: 🖱️Request a replacement account\nType 4: 📨Contact the admin`;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
 }
