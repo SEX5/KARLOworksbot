@@ -21,7 +21,7 @@ Just type the number of your choice! 😊`;
 async function startManualEntryFlow(sender_psid, sendText, imageUrl) {
     await sendText(sender_psid, `😔 Oops! I couldn't read your receipt automatically.
 No worries — we can still register your purchase manually! 🙌
-Please type your *13-digit GCash reference number*:
+Please type your 13-digit GCash reference number! Remove any spaces before sending the reference number. Example 123456789123:
 (Type 'Menu' to return to the main menu.)`);
     stateManager.setUserState(sender_psid, 'awaiting_manual_ref', { imageUrl: imageUrl });
 }
