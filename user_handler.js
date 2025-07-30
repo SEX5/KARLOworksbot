@@ -309,7 +309,7 @@ Ref No: ${refNumber}`;
 // --- Check Remaining Claims ---
 async function promptForCheckClaims(sender_psid, sendText) {
     await sendText(sender_psid, `🔍 Want to check how many replacements you have left?
-Please enter your 13-digit GCash reference number:
+Please enter your 13-digit GCash reference number! Remove any spaces before sending the reference number. Example 123456789123:
 (Type 'Menu' to return to the main menu.)`);
     stateManager.setUserState(sender_psid, 'awaiting_ref_for_check');
 }
@@ -334,7 +334,7 @@ async function processCheckClaims(sender_psid, refNumber, sendText) {
 // --- Request Replacement Account ---
 async function promptForReplacement(sender_psid, sendText) {
     await sendText(sender_psid, `🔁 Ready for a replacement?
-Please provide your 13-digit GCash reference number:
+Please provide your 13-digit GCash reference number!! Remove any spaces before sending the reference number. Example 123456789123:
 (Type 'Menu' to return to the main menu.)`);
     stateManager.setUserState(sender_psid, 'awaiting_ref_for_replacement');
 }
