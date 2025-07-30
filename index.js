@@ -56,13 +56,28 @@ async function handleMessage(sender_psid, webhook_event) {
     const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
     const lowerCaseText = messageText?.toLowerCase();
 
-    // Explicitly ignore non-text messages like likes, stickers, etc.
+    // --- Fix 4: Handle non-text messages (likes/stickers) by sending the menu ---
     // Check for sticker_id or lack of text content
     if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
-        console.log(`Ignoring non-text message from ${sender_psid}`); // Optional: for debugging
-        return; // Silently ignore likes, stickers, empty messages
+        console.log(`Non-text message (like/sticker) detected from ${sender_psid}, sending menu.`);
+        // Clear state to ensure menu is shown
+        stateManager.clearUserState(sender_psid);
+        // Determine if user is admin and send appropriate menu
+        // We need to check isAdmin here because it's used later and not yet determined
+        const isAdmin = await dbManager.isAdmin(sender_psid);
+        if (isAdmin) {
+            return adminHandler.showAdminMenu(sender_psid, sendText);
+        } else {
+            return userHandler.showUserMenu(sender_psid, sendText);
+        }
+        // Important: Return after sending the menu to prevent further processing
+        // return; // Uncommenting this 'return' is safer to ensure ONLY the menu is sent.
+        // However, the logic below for text commands is designed to handle cases where
+        // messageText might be null/empty but not a sticker, so leaving 'return;' commented
+        // allows that (unlikely) path, though it will likely hit 'if (!messageText) return;' later.
+        // For absolute certainty that ONLY the menu is sent for likes/stickers, uncomment 'return;'
     }
-    // --- End Fix 1 ---
+    // --- End Fix 4 ---
 
     if (lowerCaseText === 'setup admin') {
         if (sender_psid === ADMIN_ID) {
@@ -101,8 +116,16 @@ async function handleMessage(sender_psid, webhook_event) {
     // --- End Fix 3 ---
 
 
-    // --- Removed redundant check as it's now handled above ---
-    // if (!messageText) return; // This line is now redundant due to the robust check at the beginning
+    // --- Redundant check removed ---
+    // The robust check at the beginning handles the case where messageText is missing/empty.
+    // The specific handling for likes/stickers also returns early.
+    // Therefore, if execution reaches here, messageText is likely valid.
+    // The original `if (!messageText) return;` is now redundant.
+    // However, keeping a simple check here can act as a final safety net,
+    // though it's unlikely to be triggered given the logic above.
+    // For absolute clarity and safety, we can keep a minimal check:
+    // if (!messageText) return; // Final safety net (though likely redundant now)
+    // --- End Redundant check note ---
 
     if (lowerCaseText === 'menu') {
         stateManager.clearUserState(sender_psid);
@@ -122,11 +145,11 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_edit_mod_continue': return adminHandler.processEditMod_Step5_Continue(sender_psid, messageText, sendText);
                 case 'awaiting_add_ref_number': return adminHandler.processAddRef_Step2_GetMod(sender_psid, messageText, sendText);
                 case 'awaiting_add_ref_mod_id': return adminHandler.processAddRef_Step3_Save(sender_psid, messageText, sendText);
-                // --- Fix 4: Ensure admin input during setup is processed ---
+                // --- Fix 5: Ensure admin input during setup is processed ---
                 case 'awaiting_edit_admin':
                     // This will now correctly route to the admin handler when in this state
                     return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
-                // --- End Fix 4 ---
+                // --- End Fix 5 ---
                 case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
                 case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
                 case 'awaiting_delete_ref': return adminHandler.processDeleteRef(sender_psid, messageText, sendText);
