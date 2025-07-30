@@ -37,8 +37,8 @@ Please double-check and try again. Example: 1234567890123
     const { imageUrl } = stateManager.getUserState(sender_psid);
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
-        await sendText(sender_psid, "⚠️ An issue occurred (no mods found). An admin has been notified.
-(Type 'Menu' to return to the main menu.)");
+        await sendText(sender_psid, `⚠️ An issue occurred (no mods found). An admin has been notified.
+(Type 'Menu' to return to the main menu.)`);
         stateManager.clearUserState(sender_psid);
         return;
     }
