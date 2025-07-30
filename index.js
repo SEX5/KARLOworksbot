@@ -1,7 +1,6 @@
 // index.js (Updated Version)
 const express = require('express');
 const axios = require('axios');
-const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const dbManager = require('./database.js');
@@ -51,19 +50,35 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
 }
 
 async function handleMessage(sender_psid, webhook_event) {
-    // --- Fix 1: Robustly check for message content ---
+    // --- Fix 1: Check for Images FIRST, conditionally ---
+    // Get user state early to check if we are expecting a receipt
+    const userStateObj_preCheck = stateManager.getUserState(sender_psid);
+    const expectingReceipt = userStateObj_preCheck?.state === 'awaiting_receipt_for_purchase';
+
+    // Handle image attachments (receipts) ONLY if expecting one
+    if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
+        // Optional: Add extra check to avoid processing sticker attachments if any slip through
+        // Although typically stickers have message.sticker_id, being cautious
+        if (!webhook_event.message?.sticker_id) {
+            const imageUrl = webhook_event.message.attachments[0].payload.url;
+            await handleReceiptSubmission(sender_psid, imageUrl);
+        }
+        return; // Important: return after handling image or deciding not to
+    }
+    // --- End Fix 1 ---
+
+    // --- Fix 2: Robustly check for message content ---
     // Get message text, ensuring it's a string and trimmed
     const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
     const lowerCaseText = messageText?.toLowerCase();
 
-    // --- Fix 4: Handle non-text messages (likes/stickers) by sending the menu ---
-    // Check for sticker_id or lack of text content
+    // --- Fix 3: Handle non-text messages (likes/stickers) by sending the menu ---
+    // Check for sticker_id or lack of text content (AFTER checking for images)
     if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
         console.log(`Non-text message (like/sticker) detected from ${sender_psid}, sending menu.`);
         // Clear state to ensure menu is shown
         stateManager.clearUserState(sender_psid);
         // Determine if user is admin and send appropriate menu
-        // We need to check isAdmin here because it's used later and not yet determined
         const isAdmin = await dbManager.isAdmin(sender_psid);
         if (isAdmin) {
             return adminHandler.showAdminMenu(sender_psid, sendText);
@@ -71,17 +86,13 @@ async function handleMessage(sender_psid, webhook_event) {
             return userHandler.showUserMenu(sender_psid, sendText);
         }
         // Important: Return after sending the menu to prevent further processing
-        // return; // Uncommenting this 'return' is safer to ensure ONLY the menu is sent.
-        // However, the logic below for text commands is designed to handle cases where
-        // messageText might be null/empty but not a sticker, so leaving 'return;' commented
-        // allows that (unlikely) path, though it will likely hit 'if (!messageText) return;' later.
-        // For absolute certainty that ONLY the menu is sent for likes/stickers, uncomment 'return;'
+        return; // Ensure ONLY the menu is sent for likes/stickers
     }
-    // --- End Fix 4 ---
+    // --- End Fix 3 ---
 
     if (lowerCaseText === 'setup admin') {
         if (sender_psid === ADMIN_ID) {
-            // --- Fix 2: Improved default setup message ---
+            // --- Fix 4: Improved default setup message ---
             // Prompt admin to enter their actual GCash details instead of hardcoding
             await sendText(sender_psid, "✅ Setup initiated!\nPlease enter your GCash number and name in the format:\n`<11 or 13 digit number> <Your Name>`\n(e.g., 09123456789 John Doe)");
             // Set state to await the admin's input for their details
@@ -89,7 +100,7 @@ async function handleMessage(sender_psid, webhook_event) {
             // Optionally show the admin menu after the prompt
             // await adminHandler.showAdminMenu(sender_psid, sendText);
             return;
-            // --- End Fix 2 ---
+            // --- End Fix 4 ---
         } else {
             return sendText(sender_psid, "You are not authorized to perform this setup.");
         }
@@ -102,29 +113,16 @@ async function handleMessage(sender_psid, webhook_event) {
     const isAdmin = await dbManager.isAdmin(sender_psid);
     const userStateObj = stateManager.getUserState(sender_psid);
 
-    // --- Fix 3: Conditional Image Processing ---
-    // Check for image attachments ONLY if the user is in a state expecting a receipt
-    const expectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase'; // Add other relevant states if needed
-    if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
-        // Optional: Add extra check to avoid processing sticker attachments if any slip through
-        if (!webhook_event.message?.sticker_id) {
-            const imageUrl = webhook_event.message.attachments[0].payload.url;
-            await handleReceiptSubmission(sender_psid, imageUrl);
-        }
-        return; // Important: return after handling image or deciding not to
-    }
-    // --- End Fix 3 ---
-
+    // --- Removed redundant image check ---
+    // The conditional image check is now done at the very beginning.
+    // The unconditional image check `if (webhook_event.message?.attachments?.[0].type === 'image')` is removed.
+    // --- End removed check ---
 
     // --- Redundant check removed ---
     // The robust check at the beginning handles the case where messageText is missing/empty.
     // The specific handling for likes/stickers also returns early.
-    // Therefore, if execution reaches here, messageText is likely valid.
-    // The original `if (!messageText) return;` is now redundant.
-    // However, keeping a simple check here can act as a final safety net,
-    // though it's unlikely to be triggered given the logic above.
-    // For absolute clarity and safety, we can keep a minimal check:
-    // if (!messageText) return; // Final safety net (though likely redundant now)
+    // Therefore, if execution reaches here, messageText is valid.
+    // The original `if (!messageText) return;` is now redundant and removed.
     // --- End Redundant check note ---
 
     if (lowerCaseText === 'menu') {
@@ -219,3 +217,4 @@ async function startServer() {
 }
 
 startServer();
+                                                                                                
