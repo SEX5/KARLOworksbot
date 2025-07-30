@@ -1,25 +1,22 @@
-// index.js (Final Version with new admin option '8')
+// index.js (Updated Version)
 const express = require('express');
 const axios = require('axios');
 const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-
 const dbManager = require('./database.js');
 const stateManager = require('./state_manager.js');
 const userHandler = require('./user_handler.js');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
-
 const app = express();
 app.use(express.json());
-
 const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
 
 async function sendText(psid, text) {
     const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
-    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); } 
+    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); }
     catch (error) { console.error("Error sending text message:", error.response?.data || error.message); }
 }
 
@@ -29,7 +26,7 @@ async function sendImage(psid, imageUrl) {
         message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } },
         messaging_type: "RESPONSE"
     };
-    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); } 
+    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); }
     catch (error) { console.error("Error sending image message:", error.response?.data || error.message); }
 }
 
@@ -54,18 +51,35 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
 }
 
 async function handleMessage(sender_psid, webhook_event) {
-    const messageText = webhook_event.message?.text?.trim();
+    // --- Fix 1: Robustly check for message content ---
+    // Get message text, ensuring it's a string and trimmed
+    const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
     const lowerCaseText = messageText?.toLowerCase();
+
+    // Explicitly ignore non-text messages like likes, stickers, etc.
+    // Check for sticker_id or lack of text content
+    if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
+        console.log(`Ignoring non-text message from ${sender_psid}`); // Optional: for debugging
+        return; // Silently ignore likes, stickers, empty messages
+    }
+    // --- End Fix 1 ---
 
     if (lowerCaseText === 'setup admin') {
         if (sender_psid === ADMIN_ID) {
-            await dbManager.updateAdminInfo(sender_psid, "09123963204 Karl abalunan");
-            await sendText(sender_psid, "✅ You have been successfully registered as the admin!");
-            return adminHandler.showAdminMenu(sender_psid, sendText);
+            // --- Fix 2: Improved default setup message ---
+            // Prompt admin to enter their actual GCash details instead of hardcoding
+            await sendText(sender_psid, "✅ Setup initiated!\nPlease enter your GCash number and name in the format:\n`<11 or 13 digit number> <Your Name>`\n(e.g., 09123456789 John Doe)");
+            // Set state to await the admin's input for their details
+            stateManager.setUserState(sender_psid, 'awaiting_edit_admin');
+            // Optionally show the admin menu after the prompt
+            // await adminHandler.showAdminMenu(sender_psid, sendText);
+            return;
+            // --- End Fix 2 ---
         } else {
             return sendText(sender_psid, "You are not authorized to perform this setup.");
         }
     }
+
     if (lowerCaseText === 'my id') {
         return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`);
     }
@@ -73,18 +87,28 @@ async function handleMessage(sender_psid, webhook_event) {
     const isAdmin = await dbManager.isAdmin(sender_psid);
     const userStateObj = stateManager.getUserState(sender_psid);
 
-    if (webhook_event.message?.attachments?.[0].type === 'image') {
-        const imageUrl = webhook_event.message.attachments[0].payload.url;
-        await handleReceiptSubmission(sender_psid, imageUrl);
-        return;
+    // --- Fix 3: Conditional Image Processing ---
+    // Check for image attachments ONLY if the user is in a state expecting a receipt
+    const expectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase'; // Add other relevant states if needed
+    if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
+        // Optional: Add extra check to avoid processing sticker attachments if any slip through
+        if (!webhook_event.message?.sticker_id) {
+            const imageUrl = webhook_event.message.attachments[0].payload.url;
+            await handleReceiptSubmission(sender_psid, imageUrl);
+        }
+        return; // Important: return after handling image or deciding not to
     }
-    if (!messageText) return;
+    // --- End Fix 3 ---
+
+
+    // --- Removed redundant check as it's now handled above ---
+    // if (!messageText) return; // This line is now redundant due to the robust check at the beginning
 
     if (lowerCaseText === 'menu') {
         stateManager.clearUserState(sender_psid);
         return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText);
     }
-    
+
     if (isAdmin) {
         const state = userStateObj?.state;
         if (state) {
@@ -98,7 +122,11 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_edit_mod_continue': return adminHandler.processEditMod_Step5_Continue(sender_psid, messageText, sendText);
                 case 'awaiting_add_ref_number': return adminHandler.processAddRef_Step2_GetMod(sender_psid, messageText, sendText);
                 case 'awaiting_add_ref_mod_id': return adminHandler.processAddRef_Step3_Save(sender_psid, messageText, sendText);
-                case 'awaiting_edit_admin': return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
+                // --- Fix 4: Ensure admin input during setup is processed ---
+                case 'awaiting_edit_admin':
+                    // This will now correctly route to the admin handler when in this state
+                    return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
+                // --- End Fix 4 ---
                 case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
                 case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
                 case 'awaiting_delete_ref': return adminHandler.processDeleteRef(sender_psid, messageText, sendText);
@@ -168,4 +196,3 @@ async function startServer() {
 }
 
 startServer();
-                
