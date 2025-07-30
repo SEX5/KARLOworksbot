@@ -161,7 +161,7 @@ async function handlePasswordForPurchase(sender_psid, text, sendText) {
     const password = text.trim();
     const mod = await db.getModById(modId);
     const adminInfo = await db.getAdminInfo();
-    const gcashNumber = adminInfo?.gcash_number || "Not set";
+    const gcashNumber = adminInfo?.gcash_number || "09123963204";
 
     await sendText(sender_psid, `🎉 You're all set! 
 
