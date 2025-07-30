@@ -1,4 +1,4 @@
-// user_handler.js (Updated Version with Menu Instructions)
+// user_handler.js (Updated Version with Menu Instructions and Name Fixes)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
@@ -37,7 +37,8 @@ Please double-check and try again. Example: 1234567890123
     const { imageUrl } = stateManager.getUserState(sender_psid);
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
-        await sendText(sender_psid, "⚠️ An issue occurred (no mods found). An admin has been notified.");
+        await sendText(sender_psid, "⚠️ An issue occurred (no mods found). An admin has been notified.
+(Type 'Menu' to return to the main menu.)");
         stateManager.clearUserState(sender_psid);
         return;
     }
@@ -70,10 +71,11 @@ Please reply with one of the numbers from the list.
         await db.addReference(refNumber, sender_psid, modId, 3);
         await sendText(sender_psid, `✅ *Success!* Your purchase of *Mod ${mod.id}* has been registered!
 You now have *3 replacement claims* available. 🎁
-An admin will verify your receipt shortly — thank you for your trust! 💙`);
+An admin will verify your receipt shortly — thank you for your trust! 💙
+(Type 'Menu' to return to the main menu.)`);
         const userName = await messengerApi.getUserProfile(sender_psid);
         const adminNotification = `⚠️ MANUAL REGISTRATION (AI FAILED) ⚠️
-User: ${userName} (${sender_psid})
+User: ${userName} // Removed PSID from here
 Manually Entered Info:
 - Ref No: ${refNumber}
 - Mod: ${mod.name} (ID: ${modId})
@@ -85,7 +87,9 @@ The original receipt is attached below for verification.`;
             await sendText(sender_psid, `⚠️ This reference number has already been used.
 Please contact an admin if you believe this is a mistake.
 (Type 'Menu' to return to the main menu.)`);
-            await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to manually submit a DUPLICATE reference number: ${refNumber}`);
+            // --- FIX: Fetch name and use it in admin message ---
+            const userName = await messengerApi.getUserProfile(sender_psid);
+            await sendText(ADMIN_ID, `⚠️ User ${userName} tried to manually submit a DUPLICATE reference number: ${refNumber}`); // Removed PSID
         } else {
             console.error(e);
             await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified. Please try again later.
@@ -170,11 +174,13 @@ async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) 
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
+    // --- FIX: Fetch name for admin messages ---
+    const userName = await messengerApi.getUserProfile(sender_psid);
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
         await sendText(sender_psid, `🔍 I couldn't clearly read the amount or a valid 13-digit reference number from that receipt.
 Don’t worry — an admin has been notified and will assist you shortly! 🙏
 (Type 'Menu' to return to the main menu.)`);
-        await sendText(ADMIN_ID, `User ${sender_psid} sent a receipt, but AI failed to extract valid info. Amount found: ${amountStr}, Ref found: ${refNumber}. Please check manually.`);
+        await sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount found: ${amountStr}, Ref found: ${refNumber}. Please check manually.`); // Removed PSID
         return; // State is cleared by the calling function or after user response
     }
     const matchingMods = await db.getModsByPrice(amount);
@@ -211,7 +217,7 @@ Please type the number of the mod you purchased (e.g., *1*).
         await sendText(sender_psid, `💳 I received your payment of ${amount} PHP, but no mod matches this price.
 An admin has been notified and will assist you shortly. 🙌
 (Type 'Menu' to return to the main menu.)`);
-        await sendText(ADMIN_ID, `User ${sender_psid} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
+        await sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`); // Removed PSID
         // State is cleared by the calling function or after user response
     }
 }
@@ -222,10 +228,11 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
     if (text.toLowerCase() === 'yes') {
         try {
             await db.addReference(refNumber, sender_psid, modId, 3);
-            await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered with 3 replacement claims.`);
+            await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered with 3 replacement claims.
+(Type 'Menu' to return to the main menu.)`);
             const userName = await messengerApi.getUserProfile(sender_psid);
             let adminNotification = `✅ New Order Registered!
-User: ${userName} (${sender_psid})
+User: ${userName} // Removed PSID
 Mod: ${modName} (ID: ${modId})
 Ref No: ${refNumber}`;
             if (email && password) {
@@ -240,7 +247,9 @@ Ref No: ${refNumber}`;
                 await sendText(sender_psid, `⚠️ This reference number has already been used.
 Please contact an admin if you believe this is a mistake.
 (Type 'Menu' to return to the main menu.)`);
-                await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
+                // --- FIX: Fetch name and use it in admin message ---
+                const userName = await messengerApi.getUserProfile(sender_psid);
+                await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`); // Removed PSID
             } else {
                 console.error(e);
                 await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.
@@ -271,7 +280,7 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
 (Type 'Menu' to return to the main menu.)`);
         const userName = await messengerApi.getUserProfile(sender_psid);
         let adminNotification = `✅ New Order Registered!
-User: ${userName} (${sender_psid})
+User: ${userName} // Removed PSID
 Mod: ${mod.name} (ID: ${modId})
 Ref No: ${refNumber}`;
         if (email && password) {
@@ -285,7 +294,9 @@ Ref No: ${refNumber}`;
         if (e.message === 'Duplicate reference number') {
             await sendText(sender_psid, `⚠️ This reference number has already been used.
 (Type 'Menu' to return to the main menu.)`);
-            await sendText(ADMIN_ID, `⚠️ User ${sender_psid} tried to submit a duplicate reference number: ${refNumber}`);
+            // --- FIX: Fetch name and use it in admin message ---
+            const userName = await messengerApi.getUserProfile(sender_psid);
+            await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`); // Removed PSID
         } else {
             console.error(e);
             await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.
@@ -369,7 +380,7 @@ Please type your message, and I’ll forward it to the admin right away!
 
 async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID) {
     const userName = await messengerApi.getUserProfile(sender_psid);
-    const forwardMessage = `📩 Message from user ${userName} (${sender_psid}):
+    const forwardMessage = `📩 Message from user ${userName}: // Removed PSID
 "${text}"`;
     await sendText(ADMIN_ID, forwardMessage);
     await sendText(sender_psid, `✅ Your message has been sent to the admin!
@@ -398,3 +409,4 @@ module.exports = {
     handleManualReference,
     handleManualModSelection
 };
+                               
