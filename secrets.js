@@ -10,5 +10,8 @@ module.exports = {
     PAGE_ACCESS_TOKEN: "EAA5a1El5oeIBPJTpHW0ttQlR0w17ezQnQZA1xe0GdOJaRZAuNkL4Pz5KmHJZBr6ZB6hgm0QR8pmL493oqLsd9N0jyewWxaChbgZC9u0mtYAElrGqwWt1LmLKGVhIoeJ8USwFGq74EEoa7yGyOkJHvq0n0I7hZAAqEAhSii23UZB6YiAdjKWS2SgFDtWZAQM3x6gTdzhqSDbwQ3VesFe5Wdv3NceCwgZDZD",
     VERIFY_TOKEN: "pinkGuineaFowl_onpella_2025",
     ADMIN_ID: "9022271741140377",
-    GEMINI_API_KEY: "AIzaSyCAIMkQPtvM8aei8QigSyBxD8WoP2hYAQI"
+    OPENROUTER_API_KEY: "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",
+    SITE_URL: "https://karloworksbot.onrender.com",
+    // --- Fallback AI Service (Space OCR) ---
+    SPACE_OCR_API_KEY: "K85254716088957"
 };
