@@ -43,7 +43,7 @@ Please double-check and try again. Example: 1234567890123
         return;
     }
     let response = `🎉 Thank you! Your reference is confirmed.
-Which *Mod* did you purchase? Here are the available options:
+Which Mod did you purchase? Here are the available options:
 `;
     mods.forEach(mod => {
         response += `🔹 Mod ${mod.id}: ${mod.name}
@@ -69,7 +69,7 @@ Please reply with one of the numbers from the list.
     }
     try {
         await db.addReference(refNumber, sender_psid, modId, 3);
-        await sendText(sender_psid, `✅ *Success!* Your purchase of *Mod ${mod.id}* has been registered!
+        await sendText(sender_psid, `✅ Success! Your purchase of *Mod ${mod.id}* has been registered!
 You now have *3 replacement claims* available. 🎁
 An admin will verify your receipt shortly — thank you for your trust! 💙
 (Type 'Menu' to return to the main menu.)`);
@@ -104,7 +104,7 @@ async function handleViewMods(sender_psid, sendText) {
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
         return sendText(sender_psid, `📭 There are currently no mods available.
-Check back later or type *Menu* to return.`);
+Check back later or type Menu to return.`);
     }
     let response = `🎮 *Available Mods* 🎮
 Here’s what you can get right now:
@@ -128,7 +128,7 @@ Here’s what you can get right now:
 async function handleWantMod(sender_psid, text, sendText) {
     const modId = parseInt(text.replace('want mod', '').trim());
     if (isNaN(modId)) {
-        return sendText(sender_psid, `❌ Invalid format. Please type Want Mod [Number] (e.g., Want Mod 1).
+        return sendText(sender_psid, `❌ Invalid format. Please type [Number] (e.g., 1).
 (Type 'Menu' to return to the main menu.)`);
     }
     const mod = await db.getModById(modId);
