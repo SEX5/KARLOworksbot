@@ -1,4 +1,4 @@
-// user_handler.js (Updated Version with Menu Instructions and Name Fixes)
+// user_handler.js (Final version with all claim text fixes and improvements)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
@@ -68,9 +68,10 @@ Please reply with one of the numbers from the list.
         return;
     }
     try {
-        await db.addReference(refNumber, sender_psid, modId, 3);
+        const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
+        const claimsText = claimsAdded === 1 ? '1 replacement claim' : `${claimsAdded} replacement claims`;
         await sendText(sender_psid, `✅ Success! Your purchase of *Mod ${mod.id}* has been registered!
-You now have *3 replacement claims* available. 🎁
+You now have *${claimsText}* available. 🎁
 An admin will verify your receipt shortly — thank you for your trust! 💙
 (Type 'Menu' to return to the main menu.)`);
         const userName = await messengerApi.getUserProfile(sender_psid);
@@ -87,7 +88,6 @@ The original receipt is attached below for verification.`;
             await sendText(sender_psid, `⚠️ This reference number has already been used.
 Please contact an admin if you believe this is a mistake.
 (Type 'Menu' to return to the main menu.)`);
-            // --- FIX: Fetch name and use it in admin message ---
             const userName = await messengerApi.getUserProfile(sender_psid);
             await sendText(ADMIN_ID, `⚠️ User ${userName} tried to manually submit a DUPLICATE reference number: ${refNumber}`); // Removed PSID
         } else {
@@ -110,9 +110,11 @@ Check back later or type Menu to return.`);
 Here’s what you can get right now:
 `;
     mods.forEach(mod => {
+        const claimsText = mod.default_claims_max === 1 ? '1 Replacement' : `${mod.default_claims_max} Replacements`;
         response += `
 📦 Type ${mod.id}: ${mod.description || 'N/A'}
 💰 Price: ${mod.price} PHP
+🔁 Claims: ${claimsText}
 📦 Stock: ${mod.stock} ${mod.stock > 0 ? '🟢' : '🔴'}
 🖼️ Image: ${mod.image_url || 'N/A'}
 `;
@@ -166,22 +168,18 @@ We’ll verify and deliver your mod ASAP! ⏳💙
 }
 
 // --- Receipt Analysis (AI-powered) ---
-// Note: This function is triggered automatically after receipt submission.
-// Adding a menu prompt here isn't typical, as the next step is confirmation/clarification.
-// The subsequent steps (handleModConfirmation, handleModClarification) will lead back to the menu.
 async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) {
     const precollectedState = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
-    // --- FIX: Fetch name for admin messages ---
     const userName = await messengerApi.getUserProfile(sender_psid);
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
         await sendText(sender_psid, `🔍 I couldn't clearly read the amount or a valid 13-digit reference number from that receipt.
 Don’t worry — an admin has been notified and will assist you shortly! 🙏
 (Type 'Menu' to return to the main menu.)`);
-        await sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount found: ${amountStr}, Ref found: ${refNumber}. Please check manually.`); // Removed PSID
-        return; // State is cleared by the calling function or after user response
+        await sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount found: ${amountStr}, Ref found: ${refNumber}. Please check manually.`);
+        return;
     }
     const matchingMods = await db.getModsByPrice(amount);
     if (matchingMods.length === 1) {
@@ -217,8 +215,7 @@ Please type the number of the mod you purchased (e.g., *1*).
         await sendText(sender_psid, `💳 I received your payment of ${amount} PHP, but no mod matches this price.
 An admin has been notified and will assist you shortly. 🙌
 (Type 'Menu' to return to the main menu.)`);
-        await sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`); // Removed PSID
-        // State is cleared by the calling function or after user response
+        await sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
     }
 }
 
@@ -227,8 +224,9 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
     const { refNumber, modId, modName, email, password } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'yes') {
         try {
-            await db.addReference(refNumber, sender_psid, modId, 3);
-            await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered with 3 replacement claims.
+            const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
+            const claimsText = claimsAdded === 1 ? '1 replacement claim' : `${claimsAdded} replacement claims`;
+            await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered with ${claimsText}.
 (Type 'Menu' to return to the main menu.)`);
             const userName = await messengerApi.getUserProfile(sender_psid);
             let adminNotification = `✅ New Order Registered!
@@ -247,9 +245,8 @@ Ref No: ${refNumber}`;
                 await sendText(sender_psid, `⚠️ This reference number has already been used.
 Please contact an admin if you believe this is a mistake.
 (Type 'Menu' to return to the main menu.)`);
-                // --- FIX: Fetch name and use it in admin message ---
                 const userName = await messengerApi.getUserProfile(sender_psid);
-                await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`); // Removed PSID
+                await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`);
             } else {
                 console.error(e);
                 await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.
@@ -261,7 +258,7 @@ Please contact an admin if you believe this is a mistake.
 If you made a mistake, feel free to contact an admin. 😊
 (Type 'Menu' to return to the main menu.)`);
     }
-    stateManager.clearUserState(sender_psid); // Always clear state at the end of the flow
+    stateManager.clearUserState(sender_psid);
 }
 
 // --- Clarify Mod if Multiple Match ---
@@ -275,8 +272,9 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
         return;
     }
     try {
-        await db.addReference(refNumber, sender_psid, modId, 3);
-        await sendText(sender_psid, `✅ Got it! Your purchase of *Mod ${modId}* has been registered with *3 replacement claims*. 🎉
+        const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
+        const claimsText = claimsAdded === 1 ? `*1 replacement claim*` : `*${claimsAdded} replacement claims*`;
+        await sendText(sender_psid, `✅ Got it! Your purchase of *Mod ${modId}* has been registered with ${claimsText}. 🎉
 (Type 'Menu' to return to the main menu.)`);
         const userName = await messengerApi.getUserProfile(sender_psid);
         let adminNotification = `✅ New Order Registered!
@@ -294,16 +292,15 @@ Ref No: ${refNumber}`;
         if (e.message === 'Duplicate reference number') {
             await sendText(sender_psid, `⚠️ This reference number has already been used.
 (Type 'Menu' to return to the main menu.)`);
-            // --- FIX: Fetch name and use it in admin message ---
             const userName = await messengerApi.getUserProfile(sender_psid);
-            await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`); // Removed PSID
+            await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`);
         } else {
             console.error(e);
             await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.
 (Type 'Menu' to return to the main menu.)`);
         }
     }
-    stateManager.clearUserState(sender_psid); // Always clear state at the end of the flow
+    stateManager.clearUserState(sender_psid);
 }
 
 // --- Check Remaining Claims ---
@@ -325,7 +322,8 @@ async function processCheckClaims(sender_psid, refNumber, sendText) {
 (Type 'Menu' to return to the main menu.)`);
     } else {
         const remaining = ref.claims_max - ref.claims_used;
-        await sendText(sender_psid, `🎉 You have ${remaining} replacement account(s) left for Mod ${ref.mod_id} (${ref.mod_name}).
+        const claimsText = remaining === 1 ? '1 replacement account' : `${remaining} replacement accounts`;
+        await sendText(sender_psid, `🎉 You have ${claimsText} left for Mod ${ref.mod_id} (${ref.mod_name}).
 (Type 'Menu' to return to the main menu.)`);
     }
     stateManager.clearUserState(sender_psid);
@@ -409,4 +407,3 @@ module.exports = {
     handleManualReference,
     handleManualModSelection
 };
-                               
