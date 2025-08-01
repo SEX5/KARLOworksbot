@@ -128,7 +128,7 @@ Here’s what you can get right now:
 async function handleWantMod(sender_psid, text, sendText) {
     const modId = parseInt(text.replace('want mod', '').trim());
     if (isNaN(modId)) {
-        return sendText(sender_psid, `❌ Invalid format. Please type [Number] (e.g., 1).
+        return sendText(sender_psid, `❌ Invalid format. Please type (example: 1).
 (Type 'Menu' to return to the main menu.)`);
     }
     const mod = await db.getModById(modId);
