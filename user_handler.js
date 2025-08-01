@@ -51,7 +51,7 @@ Which Mod did you purchase? Here are the available options:
 `;
     });
     response += `
-👉 Please reply with just the Mod number (e.g., 1)
+👉 Please reply with just the Mod number (example: 1 )
 (Type 'Menu' to return to the main menu.)`;
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'awaiting_manual_mod', { imageUrl, refNumber });
@@ -118,7 +118,7 @@ Here’s what you can get right now:
 `;
     });
     response += `
-💡 To purchase, Please reply with just the Mod number (e.g., 1)
+💡 To purchase, Please reply with just the Mod number (example: 1)
 🔙 To return to the menu, type: Menu`;
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'awaiting_want_mod');
