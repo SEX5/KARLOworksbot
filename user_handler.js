@@ -111,7 +111,7 @@ Here’s what you can get right now:
 `;
     mods.forEach(mod => {
         response += `
-📦 Mod ${mod.id}: ${mod.description || 'N/A'}
+📦 Type ${mod.id}: ${mod.description || 'N/A'}
 💰 Price: ${mod.price} PHP
 📦 Stock: ${mod.stock} ${mod.stock > 0 ? '🟢' : '🔴'}
 🖼️ Image: ${mod.image_url || 'N/A'}
