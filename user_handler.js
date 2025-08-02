@@ -5,7 +5,7 @@ const messengerApi = require('./messenger_api.js');
 
 // --- Main Menu ---
 async function showUserMenu(sender_psid, sendText) {
-    const menu = `🌟 Welcome to ModShop! 🌟
+    const menu = `🌟 Welcome to KARLOWORKS ModShop! 🌟
 We're thrilled to help you unlock your gaming experience!
 Please choose an option:
 🔢 1️⃣  View available mods
