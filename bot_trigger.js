@@ -20,11 +20,11 @@ async function triggerAccountCreator(email, password, setId) {
         return false;
     }
 
-    // This command format is specifically designed to be parsed by the Python bot.
-    const commandText = `/create ${email} ${password} ${setId}`;
+    // Wrap the email in backticks (`) to force it to be treated as plain text.
+    const commandText = `/create \`${email}\` ${password} ${setId}`;
 
     try {
-        console.log(`Triggering creator bot for set ${setId} with command...`);
+        console.log(`Triggering creator bot with command: ${commandText}`); // Updated log for better debugging
         await axios.post(TELEGRAM_API_URL, {
             chat_id: ADMIN_CHAT_ID,
             text: commandText,
