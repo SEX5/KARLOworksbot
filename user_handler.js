@@ -1,7 +1,10 @@
-// user_handler.js (Final version with all claim text fixes and improvements)
+// --- START OF FILE user_handler.js ---
+
+// user_handler.js (Final version with automation trigger)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
+const botTrigger = require('./bot_trigger');
 
 // --- Main Menu ---
 async function showUserMenu(sender_psid, sendText) {
@@ -224,39 +227,35 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
     const { refNumber, modId, modName, email, password } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'yes') {
         try {
-            const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
-            const claimsText = claimsAdded === 1 ? '1 replacement claim' : `${claimsAdded} replacement claims`;
-            await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered with ${claimsText}.
-(Type 'Menu' to return to the main menu.)`);
-            const userName = await messengerApi.getUserProfile(sender_psid);
-            let adminNotification = `✅ New Order Registered!
-User: ${userName} // Removed PSID
-Mod: ${modName} (ID: ${modId})
-Ref No: ${refNumber}`;
+            await db.addReference(refNumber, sender_psid, modId);
+            
+            // --- AUTOMATION TRIGGER LOGIC ---
             if (email && password) {
-                adminNotification += `
-👤 User Provided Details:
-📧 Email: \`${email}\`
-🔐 Password: \`${password}\``;
+                await sendText(sender_psid, `✅ Purchase confirmed! Your account is now being automatically created. This may take a few minutes. You will be notified by the admin once it's ready.`);
+                await botTrigger.triggerAccountCreator(email, password, modId);
+            } else {
+                await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered. An admin will create your account shortly.`);
+            }
+            // --- END AUTOMATION TRIGGER LOGIC ---
+
+            const userName = await messengerApi.getUserProfile(sender_psid);
+            let adminNotification = `✅ New Order Registered! Triggering creator bot...\nUser: ${userName}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}`;
+            if (email && password) {
+                adminNotification += `\n👤 Details:\n📧 Email: \`${email}\`\n🔐 Password: \`${password}\``;
             }
             await sendText(ADMIN_ID, adminNotification);
         } catch (e) {
             if (e.message === 'Duplicate reference number') {
-                await sendText(sender_psid, `⚠️ This reference number has already been used.
-Please contact an admin if you believe this is a mistake.
-(Type 'Menu' to return to the main menu.)`);
+                await sendText(sender_psid, `⚠️ This reference number has already been used.\nPlease contact an admin if you believe this is a mistake.\n(Type 'Menu' to return to the main menu.)`);
                 const userName = await messengerApi.getUserProfile(sender_psid);
                 await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`);
             } else {
                 console.error(e);
-                await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.
-(Type 'Menu' to return to the main menu.)`);
+                await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.\n(Type 'Menu' to return to the main menu.)`);
             }
         }
     } else {
-        await sendText(sender_psid, `❌ Okay, the transaction has been cancelled.
-If you made a mistake, feel free to contact an admin. 😊
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, `❌ Okay, the transaction has been cancelled.\nIf you made a mistake, feel free to contact an admin. 😊\n(Type 'Menu' to return to the main menu.)`);
     }
     stateManager.clearUserState(sender_psid);
 }
@@ -267,37 +266,35 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
     const modId = parseInt(text.trim());
     const mod = await db.getModById(modId);
     if (isNaN(modId) || !mod) {
-        await sendText(sender_psid, `❌ That's not a valid Mod number. Please reply with just the number (e.g., 1).
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, `❌ That's not a valid Mod number. Please reply with just the number (e.g., 1).\n(Type 'Menu' to return to the main menu.)`);
         return;
     }
     try {
-        const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
-        const claimsText = claimsAdded === 1 ? `*1 replacement claim*` : `*${claimsAdded} replacement claims*`;
-        await sendText(sender_psid, `✅ Got it! Your purchase of *Mod ${modId}* has been registered with ${claimsText}. 🎉
-(Type 'Menu' to return to the main menu.)`);
-        const userName = await messengerApi.getUserProfile(sender_psid);
-        let adminNotification = `✅ New Order Registered!
-User: ${userName} // Removed PSID
-Mod: ${mod.name} (ID: ${modId})
-Ref No: ${refNumber}`;
+        await db.addReference(refNumber, sender_psid, modId);
+
+        // --- AUTOMATION TRIGGER LOGIC ---
         if (email && password) {
-            adminNotification += `
-👤 User Provided Details:
-📧 Email: \`${email}\`
-🔐 Password: \`${password}\``;
+            await sendText(sender_psid, `✅ Got it! Your purchase of *Mod ${modId}* is confirmed. Your account is now being automatically created. This may take a few minutes.`);
+            await botTrigger.triggerAccountCreator(email, password, modId);
+        } else {
+            await sendText(sender_psid, `✅ Got it! Your purchase of *Mod ${modId}* has been registered. An admin will create your account shortly.`);
+        }
+        // --- END AUTOMATION TRIGGER LOGIC ---
+        
+        const userName = await messengerApi.getUserProfile(sender_psid);
+        let adminNotification = `✅ New Order Registered! Triggering creator bot...\nUser: ${userName}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}`;
+        if (email && password) {
+            adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\`\n🔐 Password: \`${password}\``;
         }
         await sendText(ADMIN_ID, adminNotification);
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
-            await sendText(sender_psid, `⚠️ This reference number has already been used.
-(Type 'Menu' to return to the main menu.)`);
+            await sendText(sender_psid, `⚠️ This reference number has already been used.\n(Type 'Menu' to return to the main menu.)`);
             const userName = await messengerApi.getUserProfile(sender_psid);
             await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`);
         } else {
             console.error(e);
-            await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.
-(Type 'Menu' to return to the main menu.)`);
+            await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.\n(Type 'Menu' to return to the main menu.)`);
         }
     }
     stateManager.clearUserState(sender_psid);
