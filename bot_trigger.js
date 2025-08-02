@@ -20,8 +20,8 @@ async function triggerAccountCreator(email, password, setId) {
         return false;
     }
 
-    // This is the correct and final format. It uses BACKTICKS (`).
-    const commandText = `/create \`${email}\` ${password} ${setId}`;
+    // This is the final, correct format. It sends the command as plain text with no quotes.
+    const commandText = `/create ${email} ${password} ${setId}`;
 
     try {
         console.log(`Triggering creator bot with command: ${commandText}`);
