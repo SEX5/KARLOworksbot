@@ -9,6 +9,7 @@ const userHandler = require('./user_handler.js');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
+require('./bot_trigger.js'); // <-- THIS IS THE REQUIRED NEW LINE
 const app = express();
 app.use(express.json());
 const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
