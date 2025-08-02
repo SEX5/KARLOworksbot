@@ -20,11 +20,11 @@ async function triggerAccountCreator(email, password, setId) {
         return false;
     }
 
-    // Wrap the email in backticks (`) to force it to be treated as plain text.
+    // This is the correct and final format. It uses BACKTICKS (`).
     const commandText = `/create \`${email}\` ${password} ${setId}`;
 
     try {
-        console.log(`Triggering creator bot with command: ${commandText}`); // Updated log for better debugging
+        console.log(`Triggering creator bot with command: ${commandText}`);
         await axios.post(TELEGRAM_API_URL, {
             chat_id: ADMIN_CHAT_ID,
             text: commandText,
