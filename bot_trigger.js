@@ -18,8 +18,14 @@ async function triggerAccountCreator(email, password, setId) {
         return false;
     }
 
-    // Use comma-separated format for the command
-    const commandText = `/create ${email},${password},${setId}`;
+    // Send arguments as a single encoded string to prevent parsing issues
+    // Format: /create {"email":"...","password":"...","setId":...}
+    const commandData = {
+        email: email,
+        password: password,
+        setId: setId
+    };
+    const commandText = `/create ${JSON.stringify(commandData)}`;
 
     try {
         console.log(`Triggering creator bot with command: ${commandText}`);
@@ -38,3 +44,4 @@ async function triggerAccountCreator(email, password, setId) {
 module.exports = {
     triggerAccountCreator
 };
+// --- END OF FILE bot_trigger.js ---
