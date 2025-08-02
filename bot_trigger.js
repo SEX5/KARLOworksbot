@@ -18,8 +18,7 @@ async function triggerAccountCreator(email, password, setId) {
         return false;
     }
 
-    // Send arguments as a single encoded string to prevent parsing issues
-    // Format: /create {"email":"...","password":"...","setId":...}
+    // Send arguments as a single JSON string
     const commandData = {
         email: email,
         password: password,
