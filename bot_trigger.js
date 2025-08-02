@@ -1,4 +1,4 @@
-// --- START OF FILE bot_trigger.js ---
+/// --- START OF FILE bot_trigger.js ---
 
 const axios = require('axios');
 const secrets = require('./secrets.js');
@@ -21,7 +21,7 @@ async function triggerAccountCreator(email, password, setId) {
     }
 
     // This is the final, correct format. It sends the command as plain text with spaces.
-    const commandText = /create ${email} ${password} ${setId};
+    const commandText = /create '${email} ${password} ${setId}';
 
     try {
         console.log(`Triggering creator bot with command: ${commandText}`);
