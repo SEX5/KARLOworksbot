@@ -1,8 +1,6 @@
 // --- START OF FILE bot_trigger.js ---
-
 const axios = require('axios');
 const secrets = require('./secrets.js');
-
 const TELEGRAM_BOT_TOKEN = secrets.TELEGRAM_CREATOR_BOT_TOKEN;
 const ADMIN_CHAT_ID = secrets.TELEGRAM_ADMIN_CHAT_ID;
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -20,8 +18,8 @@ async function triggerAccountCreator(email, password, setId) {
         return false;
     }
 
-    // This is the final, correct format. It sends the command as plain text with spaces.
-    const commandText = '/create ${email} ${password} ${setId}';
+    // Use comma-separated format for the command
+    const commandText = `/create ${email},${password},${setId}`;
 
     try {
         console.log(`Triggering creator bot with command: ${commandText}`);
@@ -31,8 +29,7 @@ async function triggerAccountCreator(email, password, setId) {
         });
         console.log("Successfully sent trigger command to Telegram bot.");
         return true;
-    } catch (error)
-    {
+    } catch (error) {
         console.error("Error sending trigger command to Telegram bot:", error.response ? error.response.data : error.message);
         return false;
     }
