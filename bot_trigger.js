@@ -20,7 +20,7 @@ async function triggerAccountCreator(email, password, setId) {
         return false;
     }
 
-    // This is the final, correct format. It sends the command as plain text with no quotes.
+    // This is the final, correct format. It sends the command as plain text with spaces.
     const commandText = `/create ${email} ${password} ${setId}`;
 
     try {
