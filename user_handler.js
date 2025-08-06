@@ -47,7 +47,7 @@ Which Mod did you purchase? Here are the available options:
 `;
     mods.forEach(mod => {
         response += `🔹 Mod ${mod.id}: ${mod.name}
-   💰 Price: ${mod.price} PHP | 📦 Stock: ${mod.stock}
+   💰 Price: ${mod.price} PHP | 
 `;
     });
     response += `
@@ -115,7 +115,6 @@ Here’s what you can get right now:
 📦 Type ${mod.id}: ${mod.description || 'N/A'}
 💰 Price: ${mod.price} PHP
 🔁 Claims: ${claimsText}
-📦 Stock: ${mod.stock} ${mod.stock > 0 ? '🟢' : '🔴'}
 🖼️ Image: ${mod.image_url || 'N/A'}
 `;
     });
