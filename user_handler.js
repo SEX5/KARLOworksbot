@@ -1,4 +1,4 @@
-// user_handler.js (Final version with all claim text fixes and improvements)
+// user_handler.js (Updated to remove stock/claims and only ask for an unused email)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
@@ -45,9 +45,10 @@ Please double-check and try again. Example: 1234567890123
     let response = `🎉 Thank you! Your reference is confirmed.
 Which Mod did you purchase? Here are the available options:
 `;
+    // Stock info removed from this list
     mods.forEach(mod => {
         response += `🔹 Mod ${mod.id}: ${mod.name}
-   💰 Price: ${mod.price} PHP | 
+   💰 Price: ${mod.price} PHP
 `;
     });
     response += `
@@ -76,7 +77,7 @@ An admin will verify your receipt shortly — thank you for your trust! 💙
 (Type 'Menu' to return to the main menu.)`);
         const userName = await messengerApi.getUserProfile(sender_psid);
         const adminNotification = `⚠️ MANUAL REGISTRATION (AI FAILED) ⚠️
-User: ${userName} // Removed PSID from here
+User: ${userName}
 Manually Entered Info:
 - Ref No: ${refNumber}
 - Mod: ${mod.name} (ID: ${modId})
@@ -89,7 +90,7 @@ The original receipt is attached below for verification.`;
 Please contact an admin if you believe this is a mistake.
 (Type 'Menu' to return to the main menu.)`);
             const userName = await messengerApi.getUserProfile(sender_psid);
-            await sendText(ADMIN_ID, `⚠️ User ${userName} tried to manually submit a DUPLICATE reference number: ${refNumber}`); // Removed PSID
+            await sendText(ADMIN_ID, `⚠️ User ${userName} tried to manually submit a DUPLICATE reference number: ${refNumber}`);
         } else {
             console.error(e);
             await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified. Please try again later.
@@ -109,12 +110,11 @@ Check back later or type Menu to return.`);
     let response = `🎮 *Available Mods* 🎮
 Here’s what you can get right now:
 `;
+    // Stock and Claims info removed from this list
     mods.forEach(mod => {
-        const claimsText = mod.default_claims_max === 1 ? '1 Replacement' : `${mod.default_claims_max} Replacements`;
         response += `
 📦 Type ${mod.id}: ${mod.description || 'N/A'}
 💰 Price: ${mod.price} PHP
-🔁 Claims: ${claimsText}
 🖼️ Image: ${mod.image_url || 'N/A'}
 `;
     });
@@ -125,7 +125,7 @@ Here’s what you can get right now:
     stateManager.setUserState(sender_psid, 'awaiting_want_mod');
 }
 
-// --- Purchase Flow: Want Mod → Email → Password → Payment ---
+// --- Purchase Flow ---
 async function handleWantMod(sender_psid, text, sendText) {
     const modId = parseInt(text.replace('want mod', '').trim());
     if (isNaN(modId)) {
@@ -137,33 +137,26 @@ async function handleWantMod(sender_psid, text, sendText) {
         return sendText(sender_psid, `❌ Invalid mod number. Please select a valid mod from the list.
 (Type 'Menu' to return to the main menu.)`);
     }
-    await sendText(sender_psid, `✅ You selected Mod ${mod.id}: ${mod.name}!
-Before we proceed, please provide the email for your account.
-(Type 'Menu' to return to the main menu.)`);
+    await sendText(sender_psid, `✅ You selected Mod ${mod.id}: ${mod.name}!\n\nTo proceed, please provide an email address that has **NOT** been used for a CarX Street account before.\n\n(Type 'Menu' to return to the main menu.)`);
     stateManager.setUserState(sender_psid, 'awaiting_email_for_purchase', { modId: mod.id });
 }
 
 async function handleEmailForPurchase(sender_psid, text, sendText) {
     const { modId } = stateManager.getUserState(sender_psid);
     const email = text.trim();
-    await sendText(sender_psid, `📧 Got it! Now, please enter the password for the account.
-(Type 'Menu' to return to the main menu.)`);
-    stateManager.setUserState(sender_psid, 'awaiting_password_for_purchase', { modId, email });
-}
+    
+    if (!/\S+@\S+\.\S+/.test(email)) {
+        await sendText(sender_psid, `❌ That doesn't look like a valid email address. Please try again.\n(Type 'Menu' to return to the main menu.)`);
+        return;
+    }
 
-async function handlePasswordForPurchase(sender_psid, text, sendText) {
-    const { modId, email } = stateManager.getUserState(sender_psid);
-    const password = text.trim();
     const mod = await db.getModById(modId);
     const adminInfo = await db.getAdminInfo();
-    const gcashNumber = adminInfo?.gcash_number || "09123963204"; // Fallback, should ideally be set via admin panel
-    await sendText(sender_psid, `🎉 You're all set! 
-Please send ${mod.price} PHP via GCash to:
-📞 ${gcashNumber}
-📲 After paying, send a screenshot of your receipt to confirm your purchase.
-We’ll verify and deliver your mod ASAP! ⏳💙
-(Type 'Menu' to return to the main menu after sending the receipt.)`);
-    stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, password });
+    const gcashNumber = adminInfo?.gcash_number || "09123963204"; // Fallback Gcash number
+
+    await sendText(sender_psid, `🎉 You're all set! Your email has been noted.\n\nPlease send ${mod.price} PHP via GCash to:\n📞 ${gcashNumber}\n\n📲 After paying, send a screenshot of your receipt to confirm your purchase.\nWe’ll verify and deliver your mod ASAP! ⏳💙\n(Type 'Menu' to return to the main menu after sending the receipt.)`);
+    
+    stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email });
 }
 
 // --- Receipt Analysis (AI-powered) ---
@@ -186,7 +179,6 @@ Don’t worry — an admin has been notified and will assist you shortly! 🙏
         let confirmationStateData = { refNumber, modId: mod.id, modName: mod.name };
         if (precollectedState) {
             confirmationStateData.email = precollectedState.email;
-            confirmationStateData.password = precollectedState.password;
         }
         await sendText(sender_psid, `💳 I see a payment of ${amount} PHP.
 Did you purchase Mod ${mod.id}: ${mod.name}? 
@@ -197,7 +189,6 @@ Did you purchase Mod ${mod.id}: ${mod.name}?
         let clarificationStateData = { refNumber };
         if (precollectedState) {
             clarificationStateData.email = precollectedState.email;
-            clarificationStateData.password = precollectedState.password;
         }
         let response = `🔍 I see a payment of ${amount} PHP, which matches multiple mods:
 `;
@@ -220,7 +211,7 @@ An admin has been notified and will assist you shortly. 🙌
 
 // --- Confirmation after Receipt ---
 async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
-    const { refNumber, modId, modName, email, password } = stateManager.getUserState(sender_psid);
+    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'yes') {
         try {
             const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
@@ -229,14 +220,11 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
 (Type 'Menu' to return to the main menu.)`);
             const userName = await messengerApi.getUserProfile(sender_psid);
             let adminNotification = `✅ New Order Registered!
-User: ${userName} // Removed PSID
+User: ${userName}
 Mod: ${modName} (ID: ${modId})
 Ref No: ${refNumber}`;
-            if (email && password) {
-                adminNotification += `
-👤 User Provided Details:
-📧 Email: \`${email}\`
-🔐 Password: \`${password}\``;
+            if (email) {
+                adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\``;
             }
             await sendText(ADMIN_ID, adminNotification);
         } catch (e) {
@@ -262,7 +250,7 @@ If you made a mistake, feel free to contact an admin. 😊
 
 // --- Clarify Mod if Multiple Match ---
 async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
-    const { refNumber, email, password } = stateManager.getUserState(sender_psid);
+    const { refNumber, email } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
     const mod = await db.getModById(modId);
     if (isNaN(modId) || !mod) {
@@ -277,14 +265,11 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
 (Type 'Menu' to return to the main menu.)`);
         const userName = await messengerApi.getUserProfile(sender_psid);
         let adminNotification = `✅ New Order Registered!
-User: ${userName} // Removed PSID
+User: ${userName}
 Mod: ${mod.name} (ID: ${modId})
 Ref No: ${refNumber}`;
-        if (email && password) {
-            adminNotification += `
-👤 User Provided Details:
-📧 Email: \`${email}\`
-🔐 Password: \`${password}\``;
+        if (email) {
+            adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\``;
         }
         await sendText(ADMIN_ID, adminNotification);
     } catch (e) {
@@ -377,7 +362,7 @@ Please type your message, and I’ll forward it to the admin right away!
 
 async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID) {
     const userName = await messengerApi.getUserProfile(sender_psid);
-    const forwardMessage = `📩 Message from user ${userName}: // Removed PSID
+    const forwardMessage = `📩 Message from user ${userName}:
 "${text}"`;
     await sendText(ADMIN_ID, forwardMessage);
     await sendText(sender_psid, `✅ Your message has been sent to the admin!
@@ -392,7 +377,6 @@ module.exports = {
     handleViewMods,
     handleWantMod,
     handleEmailForPurchase,
-    handlePasswordForPurchase,
     handleReceiptAnalysis,
     handleModConfirmation,
     handleModClarification,
