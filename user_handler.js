@@ -1,4 +1,4 @@
-// user_handler.js (Updated to remove stock/claims and only ask for an unused email)
+// user_handler.js (Updated to only ask for an unused email)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
@@ -45,10 +45,9 @@ Please double-check and try again. Example: 1234567890123
     let response = `🎉 Thank you! Your reference is confirmed.
 Which Mod did you purchase? Here are the available options:
 `;
-    // Stock info removed from this list
     mods.forEach(mod => {
         response += `🔹 Mod ${mod.id}: ${mod.name}
-   💰 Price: ${mod.price} PHP
+   💰 Price: ${mod.price} PHP | 📦 Stock: ${mod.stock}
 `;
     });
     response += `
@@ -110,11 +109,13 @@ Check back later or type Menu to return.`);
     let response = `🎮 *Available Mods* 🎮
 Here’s what you can get right now:
 `;
-    // Stock and Claims info removed from this list
     mods.forEach(mod => {
+        const claimsText = mod.default_claims_max === 1 ? '1 Replacement' : `${mod.default_claims_max} Replacements`;
         response += `
 📦 Type ${mod.id}: ${mod.description || 'N/A'}
 💰 Price: ${mod.price} PHP
+🔁 Claims: ${claimsText}
+📦 Stock: ${mod.stock} ${mod.stock > 0 ? '🟢' : '🔴'}
 🖼️ Image: ${mod.image_url || 'N/A'}
 `;
     });
@@ -145,6 +146,7 @@ async function handleEmailForPurchase(sender_psid, text, sendText) {
     const { modId } = stateManager.getUserState(sender_psid);
     const email = text.trim();
     
+    // Basic email format validation
     if (!/\S+@\S+\.\S+/.test(email)) {
         await sendText(sender_psid, `❌ That doesn't look like a valid email address. Please try again.\n(Type 'Menu' to return to the main menu.)`);
         return;
@@ -156,8 +158,11 @@ async function handleEmailForPurchase(sender_psid, text, sendText) {
 
     await sendText(sender_psid, `🎉 You're all set! Your email has been noted.\n\nPlease send ${mod.price} PHP via GCash to:\n📞 ${gcashNumber}\n\n📲 After paying, send a screenshot of your receipt to confirm your purchase.\nWe’ll verify and deliver your mod ASAP! ⏳💙\n(Type 'Menu' to return to the main menu after sending the receipt.)`);
     
+    // Set state to await the receipt, now including the email but no password
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email });
 }
+
+// The handlePasswordForPurchase function has been removed as it is no longer needed.
 
 // --- Receipt Analysis (AI-powered) ---
 async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) {
@@ -179,6 +184,7 @@ Don’t worry — an admin has been notified and will assist you shortly! 🙏
         let confirmationStateData = { refNumber, modId: mod.id, modName: mod.name };
         if (precollectedState) {
             confirmationStateData.email = precollectedState.email;
+            // password is no longer collected, so it won't be in the state
         }
         await sendText(sender_psid, `💳 I see a payment of ${amount} PHP.
 Did you purchase Mod ${mod.id}: ${mod.name}? 
@@ -211,7 +217,8 @@ An admin has been notified and will assist you shortly. 🙌
 
 // --- Confirmation after Receipt ---
 async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
-    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
+    // Note: password will be undefined here, which is handled correctly below
+    const { refNumber, modId, modName, email, password } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'yes') {
         try {
             const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
@@ -223,7 +230,7 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
 User: ${userName}
 Mod: ${modName} (ID: ${modId})
 Ref No: ${refNumber}`;
-            if (email) {
+            if (email) { // Only check for email now
                 adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\``;
             }
             await sendText(ADMIN_ID, adminNotification);
@@ -250,7 +257,8 @@ If you made a mistake, feel free to contact an admin. 😊
 
 // --- Clarify Mod if Multiple Match ---
 async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
-    const { refNumber, email } = stateManager.getUserState(sender_psid);
+    // Note: password will be undefined here
+    const { refNumber, email, password } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
     const mod = await db.getModById(modId);
     if (isNaN(modId) || !mod) {
@@ -268,7 +276,7 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
 User: ${userName}
 Mod: ${mod.name} (ID: ${modId})
 Ref No: ${refNumber}`;
-        if (email) {
+        if (email) { // Only check for email
             adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\``;
         }
         await sendText(ADMIN_ID, adminNotification);
@@ -377,6 +385,7 @@ module.exports = {
     handleViewMods,
     handleWantMod,
     handleEmailForPurchase,
+    // handlePasswordForPurchase is removed
     handleReceiptAnalysis,
     handleModConfirmation,
     handleModClarification,
