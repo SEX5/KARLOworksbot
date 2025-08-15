@@ -1,12 +1,28 @@
-// admin_handler.js (Final version with custom claims management and polished text)
+// admin_handler.js (Updated with online/offline toggle)
 const db = require('./database');
 const stateManager = require('./state_manager');
 
 const REFERENCES_PER_PAGE = 10;
 
 async function showAdminMenu(sender_psid, sendText) {
-    const menu = `Admin Menu:\nType 1: 👁️View reference numbers\nType 2: ➕Add bulk accounts\nType 3: 🖱️Edit mod details\nType 4: ➕Add a reference number\nType 5: 🖱️Edit admin info\nType 6: 🖱️Edit reference numbers\nType 7: ➕Add a new mod\nType 8: Delete a reference number`;
+    const adminInfo = await db.getAdminInfo();
+    const onlineStatus = adminInfo.is_online ? '✅ Online' : '❌ Offline';
+    const menu = `Admin Menu:\nType 1: 👁️View reference numbers\nType 2: ➕Add bulk accounts\nType 3: 🖱️Edit mod details\nType 4: ➕Add a reference number\nType 5: 🖱️Edit admin info\nType 6: 🖱️Edit reference numbers\nType 7: ➕Add a new mod\nType 8: Delete a reference number\nType 9: Toggle Online/Offline Status (Currently: ${onlineStatus})`;
     await sendText(sender_psid, menu);
+    stateManager.clearUserState(sender_psid);
+}
+
+// --- New Function to Toggle Admin Status ---
+async function toggleAdminOnlineStatus(sender_psid, sendText) {
+    try {
+        const adminInfo = await db.getAdminInfo();
+        const newStatus = !adminInfo.is_online;
+        await db.setAdminOnlineStatus(newStatus);
+        const statusText = newStatus ? '✅ Online' : '❌ Offline';
+        await sendText(sender_psid, `Your status has been updated to: ${statusText}.\nTo return to the admin menu, type "Menu".`);
+    } catch (e) {
+        await sendText(sender_psid, `❌ An error occurred while updating your status: ${e.message}`);
+    }
     stateManager.clearUserState(sender_psid);
 }
 
@@ -145,5 +161,6 @@ module.exports = {
     promptForEditAdmin, processEditAdmin,
     promptForEditRef, processEditRef,
     promptForAddMod, processAddMod,
-    promptForDeleteRef, processDeleteRef
+    promptForDeleteRef, processDeleteRef,
+    toggleAdminOnlineStatus // New function exported
 };
