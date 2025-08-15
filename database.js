@@ -1,4 +1,4 @@
-// database.js (Final Version with deleteReference and custom claims)
+// database.js (Final Version with Online/Offline functionality)
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
@@ -21,12 +21,26 @@ async function setupDatabase() {
     try {
         console.log('Connecting to Neon PostgreSQL database...');
         await client.query('BEGIN');
-        await client.query(`CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY, gcash_number TEXT)`);
+        // --- UPDATE THIS LINE --- Add the new 'is_online' column
+        await client.query(`CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY, gcash_number TEXT, is_online BOOLEAN DEFAULT FALSE)`);
         await client.query(`CREATE TABLE IF NOT EXISTS mods (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, price REAL DEFAULT 0, image_url TEXT, default_claims_max INTEGER DEFAULT 3)`);
         await client.query(`CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, mod_id INTEGER NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, is_available BOOLEAN DEFAULT TRUE, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
         await client.query(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
         await client.query('COMMIT');
         console.log('Database tables are ready on Neon.');
+
+        // --- ADD THIS BLOCK --- This adds the column if the table already exists
+        try {
+            await client.query('ALTER TABLE admins ADD COLUMN is_online BOOLEAN DEFAULT FALSE');
+            console.log('Successfully added "is_online" column to admins table.');
+        } catch (e) {
+            // This error is expected if the column already exists, so we can safely ignore it.
+            if (e.code !== '42701') { // 42701 is the pg error code for "duplicate_column"
+                throw e; // If it's a different error, we should know about it.
+            }
+        }
+        // --- END ADDED BLOCK ---
+
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('FATAL: Could not set up Neon database:', error.message);
@@ -40,6 +54,13 @@ async function setupDatabase() {
 async function deleteReference(refNumber) {
     const res = await getDb().query('DELETE FROM "references" WHERE ref_number = $1', [refNumber]);
     return res.rowCount; // Will be 1 if deleted, 0 if not found
+}
+
+// --- ADD THIS NEW FUNCTION ---
+// This is the function that was missing, causing the error.
+async function setAdminOnlineStatus(isOnline) {
+    // This updates the status for the single admin row.
+    await getDb().query('UPDATE admins SET is_online = $1', [isOnline]);
 }
 
 async function isAdmin(userId) { const res = await getDb().query('SELECT * FROM admins WHERE user_id = $1', [userId]); return res.rows[0] || null; }
@@ -60,7 +81,7 @@ async function addReference(ref, userId = 'ADMIN_ADDED', modId) {
     return claimsMax; // Return the number of claims set for confirmation messages
 }
 async function getMods() { const res = await getDb().query('SELECT m.id, m.name, m.description, m.price, m.image_url, m.default_claims_max, (SELECT COUNT(*) FROM accounts WHERE mod_id = m.id AND is_available = TRUE) as stock FROM mods m ORDER BY m.id'); return res.rows; }
-async function getModById(modId) { const res = await getDb().query('SELECT * FROM mods WHERE id = $1', [modId]); return res.rows[0] || null; } // This now fetches default_claims_max too
+async function getModById(modId) { const res = await getDb().query('SELECT * FROM mods WHERE id = $1', [modId]); return res.rows[0] || null; }
 async function getReference(refNumber) { const res = await getDb().query('SELECT r.*, m.name as mod_name FROM "references" r JOIN mods m ON r.mod_id = m.id WHERE r.ref_number = $1', [refNumber]); return res.rows[0] || null; }
 async function getAvailableAccount(modId) { const res = await getDb().query('SELECT * FROM accounts WHERE mod_id = $1 AND is_available = TRUE LIMIT 1', [modId]); return res.rows[0] || null; }
 async function claimAccount(accountId) { await getDb().query('UPDATE accounts SET is_available = FALSE WHERE id = $1', [accountId]); }
@@ -68,4 +89,25 @@ async function useClaim(refNumber) { await getDb().query('UPDATE "references" SE
 async function addMod(id, name, description, price, imageUrl, defaultClaimsMax) { await getDb().query('INSERT INTO mods (id, name, description, price, image_url, default_claims_max) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(id) DO NOTHING', [id, name, description, price, imageUrl, defaultClaimsMax]); }
 async function getModsByPrice(price) { const res = await getDb().query('SELECT * FROM mods WHERE price BETWEEN $1 AND $2', [price - 0.01, price + 0.01]); return res.rows; }
 
-module.exports = { deleteReference, setupDatabase, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice };
+// --- UPDATE THE EXPORTS --- Add the new function to the list
+module.exports = {
+    deleteReference,
+    setupDatabase,
+    isAdmin,
+    getAdminInfo,
+    updateAdminInfo,
+    getAllReferences,
+    addBulkAccounts,
+    updateModDetails,
+    updateReferenceMod,
+    addReference,
+    getMods,
+    getModById,
+    getReference,
+    getAvailableAccount,
+    claimAccount,
+    useClaim,
+    addMod,
+    getModsByPrice,
+    setAdminOnlineStatus // --- The new function is now exported
+};
