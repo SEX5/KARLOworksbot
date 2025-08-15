@@ -1,10 +1,20 @@
-// user_handler.js (Updated to only ask for an unused email)
+// user_handler.js (Updated with the hardcoded Facebook link)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
 
 // --- Main Menu ---
 async function showUserMenu(sender_psid, sendText) {
+    const adminInfo = await db.getAdminInfo();
+    if (adminInfo && adminInfo.is_online) {
+        // The hardcoded link is in this message
+        const onlineMessage = `The admin is currently online! 🟢\n\nYou can message them directly for assistance at:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nAlternatively, you can use the options below:`;
+        await sendText(sender_psid, onlineMessage);
+    } else {
+        const offlineMessage = `The admin is currently offline. 🔴\n\nYou can use the automated menu below for assistance.`;
+        await sendText(sender_psid, offlineMessage);
+    }
+
     const menu = `🌟 Welcome to KARLOWORKS ModShop! 🌟
 We're thrilled to help you unlock your gaming experience!
 Please choose an option:
