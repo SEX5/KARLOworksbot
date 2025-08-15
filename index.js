@@ -1,4 +1,4 @@
-// index.js (Updated Version)
+// index.js (Updated with admin online/offline toggle and refactoring)
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -50,57 +50,44 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
 }
 
 async function handleMessage(sender_psid, webhook_event) {
-    // --- Fix 1: Check for Images FIRST, conditionally ---
-    // Get user state early to check if we are expecting a receipt
+    // --- Smartly check for receipt images first ---
     const userStateObj_preCheck = stateManager.getUserState(sender_psid);
     const expectingReceipt = userStateObj_preCheck?.state === 'awaiting_receipt_for_purchase';
 
     // Handle image attachments (receipts) ONLY if expecting one
     if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
-        // Optional: Add extra check to avoid processing sticker attachments if any slip through
-        // Although typically stickers have message.sticker_id, being cautious
         if (!webhook_event.message?.sticker_id) {
             const imageUrl = webhook_event.message.attachments[0].payload.url;
             await handleReceiptSubmission(sender_psid, imageUrl);
         }
-        return; // Important: return after handling image or deciding not to
+        return; // Important: stop after handling the receipt
     }
-    // --- End Fix 1 ---
+    // --- End image check ---
 
-    // --- Fix 2: Robustly check for message content ---
-    // Get message text, ensuring it's a string and trimmed
+    // --- Robustly get message text ---
     const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
     const lowerCaseText = messageText?.toLowerCase();
 
-    // --- Fix 3: Handle non-text messages (likes/stickers) by sending the menu ---
-    // Check for sticker_id or lack of text content (AFTER checking for images)
+    // --- "Gatekeeper Block" for non-text messages ---
+    // Handles likes, stickers, and random images by showing the menu
     if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
-        console.log(`Non-text message (like/sticker) detected from ${sender_psid}, sending menu.`);
-        // Clear state to ensure menu is shown
+        console.log(`Non-text message (like/sticker/random image) detected from ${sender_psid}, sending menu.`);
         stateManager.clearUserState(sender_psid);
-        // Determine if user is admin and send appropriate menu
         const isAdmin = await dbManager.isAdmin(sender_psid);
         if (isAdmin) {
             return adminHandler.showAdminMenu(sender_psid, sendText);
         } else {
             return userHandler.showUserMenu(sender_psid, sendText);
         }
-        // Important: Return after sending the menu to prevent further processing
-        return; // Ensure ONLY the menu is sent for likes/stickers
+        return; // Stop further processing
     }
-    // --- End Fix 3 ---
+    // --- End Gatekeeper Block ---
 
     if (lowerCaseText === 'setup admin') {
         if (sender_psid === ADMIN_ID) {
-            // --- Fix 4: Improved default setup message ---
-            // Prompt admin to enter their actual GCash details instead of hardcoding
             await sendText(sender_psid, "✅ Setup initiated!\nPlease enter your GCash number and name in the format:\n`<11 or 13 digit number> <Your Name>`\n(e.g., 09123456789 John Doe)");
-            // Set state to await the admin's input for their details
             stateManager.setUserState(sender_psid, 'awaiting_edit_admin');
-            // Optionally show the admin menu after the prompt
-            // await adminHandler.showAdminMenu(sender_psid, sendText);
             return;
-            // --- End Fix 4 ---
         } else {
             return sendText(sender_psid, "You are not authorized to perform this setup.");
         }
@@ -113,23 +100,12 @@ async function handleMessage(sender_psid, webhook_event) {
     const isAdmin = await dbManager.isAdmin(sender_psid);
     const userStateObj = stateManager.getUserState(sender_psid);
 
-    // --- Removed redundant image check ---
-    // The conditional image check is now done at the very beginning.
-    // The unconditional image check `if (webhook_event.message?.attachments?.[0].type === 'image')` is removed.
-    // --- End removed check ---
-
-    // --- Redundant check removed ---
-    // The robust check at the beginning handles the case where messageText is missing/empty.
-    // The specific handling for likes/stickers also returns early.
-    // Therefore, if execution reaches here, messageText is valid.
-    // The original `if (!messageText) return;` is now redundant and removed.
-    // --- End Redundant check note ---
-
     if (lowerCaseText === 'menu') {
         stateManager.clearUserState(sender_psid);
         return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText);
     }
 
+    // --- ADMIN COMMANDS ---
     if (isAdmin) {
         const state = userStateObj?.state;
         if (state) {
@@ -143,11 +119,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_edit_mod_continue': return adminHandler.processEditMod_Step5_Continue(sender_psid, messageText, sendText);
                 case 'awaiting_add_ref_number': return adminHandler.processAddRef_Step2_GetMod(sender_psid, messageText, sendText);
                 case 'awaiting_add_ref_mod_id': return adminHandler.processAddRef_Step3_Save(sender_psid, messageText, sendText);
-                // --- Fix 5: Ensure admin input during setup is processed ---
-                case 'awaiting_edit_admin':
-                    // This will now correctly route to the admin handler when in this state
-                    return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
-                // --- End Fix 5 ---
+                case 'awaiting_edit_admin': return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
                 case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
                 case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
                 case 'awaiting_delete_ref': return adminHandler.processDeleteRef(sender_psid, messageText, sendText);
@@ -162,16 +134,18 @@ async function handleMessage(sender_psid, webhook_event) {
             case '6': return adminHandler.promptForEditRef(sender_psid, sendText);
             case '7': return adminHandler.promptForAddMod(sender_psid, sendText);
             case '8': return adminHandler.promptForDeleteRef(sender_psid, sendText);
+            case '9': return adminHandler.toggleAdminOnlineStatus(sender_psid, sendText); // New route
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
-    } else {
+    }
+    // --- USER COMMANDS ---
+    else {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
                 case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, messageText, sendText);
                 case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, messageText, sendText, sendImage, ADMIN_ID);
                 case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, messageText, sendText);
-                case 'awaiting_password_for_purchase': return userHandler.handlePasswordForPurchase(sender_psid, messageText, sendText);
                 case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID);
                 case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, messageText, sendText, ADMIN_ID);
                 case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, messageText, sendText);
