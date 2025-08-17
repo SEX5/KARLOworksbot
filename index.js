@@ -42,16 +42,31 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
         fs.writeFileSync(imagePath, imageBuffer);
-        await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
+
+        const userState = stateManager.getUserState(sender_psid);
+        if (userState?.state === 'awaiting_receipt_for_custom_mod') {
+             await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl);
+        } else {
+             await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
+        }
+
     } catch (error) {
         console.error("Error in handleReceiptSubmission, starting manual flow:", error.message);
-        await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl);
+        const userState = stateManager.getUserState(sender_psid);
+        // Only start manual flow for standard purchases, not custom mods
+        if (userState?.state === 'awaiting_receipt_for_purchase') {
+            await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl);
+        } else {
+            // For custom mods, a manual flow is not defined, so just notify admin
+            await sendText(sender_psid, "An error occurred while analyzing your receipt. An admin has been notified and will assist you shortly.");
+            await sendText(ADMIN_ID, `An unexpected error occurred for user ${sender_psid} during a custom mod receipt submission. Please check the logs and contact the user.`);
+        }
     }
 }
 
 async function handleMessage(sender_psid, webhook_event) {
     const userStateObj_preCheck = stateManager.getUserState(sender_psid);
-    const expectingReceipt = userStateObj_preCheck?.state === 'awaiting_receipt_for_purchase';
+    const expectingReceipt = userStateObj_preCheck?.state === 'awaiting_receipt_for_purchase' || userStateObj_preCheck?.state === 'awaiting_receipt_for_custom_mod';
     const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
     const lowerCaseText = messageText?.toLowerCase();
 
@@ -150,13 +165,15 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, messageText, sendText);
                 case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, messageText, sendText);
                 case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, messageText, sendText, ADMIN_ID);
+                case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, messageText, sendText);
             }
         }
         switch (lowerCaseText) {
             case '1': return userHandler.handleViewMods(sender_psid, sendText);
             case '2': return userHandler.promptForCheckClaims(sender_psid, sendText);
             case '3': return userHandler.promptForReplacement(sender_psid, sendText);
-            case '4': return userHandler.promptForAdminMessage(sender_psid, sendText);
+            case '4': return userHandler.promptForCustomMod(sender_psid, sendText);
+            case '5': return userHandler.promptForAdminMessage(sender_psid, sendText);
             default: return userHandler.showUserMenu(sender_psid, sendText);
         }
     }
