@@ -1,4 +1,4 @@
-// user_handler.js (Updated with the hardcoded Facebook link)
+// user_handler.js (Your provided base file)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
