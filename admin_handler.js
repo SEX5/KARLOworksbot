@@ -1,18 +1,31 @@
-// admin_handler.js (Updated with online/offline toggle)
+// admin_handler.js (Your preferred base with Online/Offline feature and formatting fixes)
 const db = require('./database');
 const stateManager = require('./state_manager');
 
 const REFERENCES_PER_PAGE = 10;
 
+// --- FIX #1: Menu is now cleanly formatted and includes the Online/Offline toggle ---
 async function showAdminMenu(sender_psid, sendText) {
     const adminInfo = await db.getAdminInfo();
     const onlineStatus = adminInfo.is_online ? '✅ Online' : '❌ Offline';
-    const menu = `Admin Menu:\nType 1: 👁️View reference numbers\nType 2: ➕Add bulk accounts\nType 3: 🖱️Edit mod details\nType 4: ➕Add a reference number\nType 5: 🖱️Edit admin info\nType 6: 🖱️Edit reference numbers\nType 7: ➕Add a new mod\nType 8: Delete a reference number\nType 9: Toggle Online/Offline Status (Currently: ${onlineStatus})`;
+    const menu = `
+Admin Menu:
+
+Type 1: 👁️ View reference numbers
+Type 2: ➕ Add bulk accounts
+Type 3: 🖱️ Edit mod details
+Type 4: ➕ Add a reference number
+Type 5: 🖱️ Edit admin info
+Type 6: 🖱️ Edit reference numbers
+Type 7: ➕ Add a new mod
+Type 8: 🗑️ Delete a reference number
+Type 9: Toggle Online/Offline Status (Currently: ${onlineStatus})
+`;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
 }
 
-// --- New Function to Toggle Admin Status ---
+// --- NEW FEATURE: The function to toggle your online status ---
 async function toggleAdminOnlineStatus(sender_psid, sendText) {
     try {
         const adminInfo = await db.getAdminInfo();
@@ -26,7 +39,8 @@ async function toggleAdminOnlineStatus(sender_psid, sendText) {
     stateManager.clearUserState(sender_psid);
 }
 
-// --- Type 1 ---
+
+// --- FIX #2: The Reference List is now cleanly formatted ---
 async function handleViewReferences(sender_psid, sendText, page = 1) {
     const allRefs = await db.getAllReferences();
     if (!allRefs || allRefs.length === 0) {
@@ -39,15 +53,27 @@ async function handleViewReferences(sender_psid, sendText, page = 1) {
     const startIndex = (page - 1) * REFERENCES_PER_PAGE;
     const endIndex = startIndex + REFERENCES_PER_PAGE;
     const refsToShow = allRefs.slice(startIndex, endIndex);
+
     let response = `--- Reference Numbers (Page ${page}/${totalPages}) ---\n\n`;
-    refsToShow.forEach(r => { response += `Ref: ${r.ref_number}\nMod: ${r.mod_name}\nUser: ${r.user_id}\nClaims: ${r.claims_used}/${r.claims_max}\n\n`; });
+
+    // Each reference is now formatted cleanly on its own lines
+    refsToShow.forEach(r => {
+        response += `Ref: ${r.ref_number}\n`;
+        response += `Mod: ${r.mod_name}\n`;
+        response += `User: ${r.user_id}\n`;
+        response += `Claims: ${r.claims_used}/${r.claims_max}\n\n`;
+    });
+
     response += `--- Options ---\n`;
     if (page < totalPages) response += `Type '1' for Next Page\n`;
     if (page > 1) response += `Type '2' for Previous Page\n`;
     response += `Type 'Menu' to return to the main menu.`;
+
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'viewing_references', { page: page });
 }
+// --- (The rest of the file is your preferred code, unchanged) ---
+
 // --- Type 2 ---
 async function promptForBulkAccounts_Step1_ModId(sender_psid, sendText) { const mods = await db.getMods(); if (!mods || mods.length === 0) { await sendText(sender_psid, "❌ There are no mods in the system yet. You must add a mod before you can add accounts.\n\nPlease use 'Type 7: Add a new mod' from the menu first."); stateManager.clearUserState(sender_psid); return; } let availableMods = "Available Mod IDs:\n"; mods.forEach(mod => { availableMods += `- ID: ${mod.id}, Name: ${mod.name}\n`; }); await sendText(sender_psid, `${availableMods}\nWhich mod would you like to add accounts to? Please type the Mod ID (e.g., 1).`); stateManager.setUserState(sender_psid, 'awaiting_bulk_accounts_mod_id'); }
 async function processBulkAccounts_Step2_GetAccounts(sender_psid, text, sendText) { const modId = parseInt(text.trim()); if (isNaN(modId) || !(await db.getModById(modId))) { await sendText(sender_psid, "Invalid Mod ID. Please type a valid number from the list.\nTo return to the menu, type \"Menu\"."); return; } await sendText(sender_psid, `Okay, adding accounts to Mod ${modId}. Please send the list of accounts now.\n\nFormat (one per line):\nusername:password\nusername2:password2`); stateManager.setUserState(sender_psid, 'awaiting_bulk_accounts_list', { modId: modId }); }
@@ -152,6 +178,7 @@ async function processDeleteRef(sender_psid, text, sendText) {
     }
 }
 
+// --- Update the exports to include the new function ---
 module.exports = {
     showAdminMenu,
     handleViewReferences,
@@ -162,5 +189,5 @@ module.exports = {
     promptForEditRef, processEditRef,
     promptForAddMod, processAddMod,
     promptForDeleteRef, processDeleteRef,
-    toggleAdminOnlineStatus // New function exported
+    toggleAdminOnlineStatus // <-- This is now exported
 };
