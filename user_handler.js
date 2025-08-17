@@ -165,7 +165,7 @@ async function handleEmailForPurchase(sender_psid, text, sendText) {
     const adminInfo = await db.getAdminInfo();
     const gcashNumber = adminInfo?.gcash_number || "09123963204"; // Fallback Gcash number
 
-    await sendText(sender_psid, `🎉 You're all set! Your email has been noted.\n\nPlease send ${mod.price} PHP via GCash to: 👨🏻‍💻Karl Abalunan\n 📞${gcashNumber}\n\n📲 After paying, send a screenshot of your receipt to confirm your purchase.\nWe’ll verify and deliver your mod ASAP! ⏳💙\n(Type 'Menu' to return to the main menu after sending the receipt.)`);
+    await sendText(sender_psid, `🎉 You're all set! Your email has been noted.\n\nPlease send ${mod.price} PHP via GCash to:\n 👨🏻‍💻Karl Abalunan\n📞${gcashNumber}\n\n📲 After paying, send a screenshot of your receipt to confirm your purchase.\nWe’ll verify and deliver your mod ASAP! ⏳💙\n(Type 'Menu' to return to the main menu after sending the receipt.)`);
     
     // Set state to await the receipt, now including the email but no password
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email });
