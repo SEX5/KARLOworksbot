@@ -1,4 +1,4 @@
-// index.js (Updated with admin online/offline toggle and refactoring)
+// index.js (Final & Complete)
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -11,7 +11,7 @@ const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
 const app = express();
 app.use(express.json());
-const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID, GEMINI_API_KEY } = secrets;
+const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID } = secrets;
 
 async function sendText(psid, text) {
     const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
@@ -50,38 +50,37 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
 }
 
 async function handleMessage(sender_psid, webhook_event) {
-    // --- Smartly check for receipt images first ---
     const userStateObj_preCheck = stateManager.getUserState(sender_psid);
     const expectingReceipt = userStateObj_preCheck?.state === 'awaiting_receipt_for_purchase';
+    const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
+    const lowerCaseText = messageText?.toLowerCase();
 
-    // Handle image attachments (receipts) ONLY if expecting one
     if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
         if (!webhook_event.message?.sticker_id) {
             const imageUrl = webhook_event.message.attachments[0].payload.url;
             await handleReceiptSubmission(sender_psid, imageUrl);
         }
-        return; // Important: stop after handling the receipt
+        return;
     }
-    // --- End image check ---
+    
+    if (expectingReceipt && messageText) {
+        await sendText(sender_psid, "It looks like you sent a message instead of a receipt, so the purchase has been cancelled. Feel free to start again from the menu! 😊");
+        stateManager.clearUserState(sender_psid);
+        return;
+    }
 
-    // --- Robustly get message text ---
-    const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
-    const lowerCaseText = messageText?.toLowerCase();
-
-    // --- "Gatekeeper Block" for non-text messages ---
-    // Handles likes, stickers, and random images by showing the menu
     if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
-        console.log(`Non-text message (like/sticker/random image) detected from ${sender_psid}, sending menu.`);
+        console.log(`Non-text message detected from ${sender_psid}, sending menu.`);
+        const isAdmin = await dbManager.isAdmin(sender_psid);
+        // Do not clear state here, let timeout handle it
+        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText);
+    }
+
+    if (lowerCaseText === 'menu') {
         stateManager.clearUserState(sender_psid);
         const isAdmin = await dbManager.isAdmin(sender_psid);
-        if (isAdmin) {
-            return adminHandler.showAdminMenu(sender_psid, sendText);
-        } else {
-            return userHandler.showUserMenu(sender_psid, sendText);
-        }
-        return; // Stop further processing
+        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText);
     }
-    // --- End Gatekeeper Block ---
 
     if (lowerCaseText === 'setup admin') {
         if (sender_psid === ADMIN_ID) {
@@ -100,16 +99,16 @@ async function handleMessage(sender_psid, webhook_event) {
     const isAdmin = await dbManager.isAdmin(sender_psid);
     const userStateObj = stateManager.getUserState(sender_psid);
 
-    if (lowerCaseText === 'menu') {
-        stateManager.clearUserState(sender_psid);
-        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText);
-    }
-
-    // --- ADMIN COMMANDS ---
     if (isAdmin) {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
+                case 'awaiting_reply_psid': 
+                    return adminHandler.promptForReply_Step2_GetUsername(sender_psid, messageText, sendText);
+                case 'awaiting_reply_username': 
+                    return adminHandler.promptForReply_Step3_GetPassword(sender_psid, messageText, sendText);
+                case 'awaiting_reply_password': 
+                    return adminHandler.processReply_Step4_Send(sender_psid, messageText, sendText);
                 case 'viewing_references': const currentPage = userStateObj.page || 1; if (lowerCaseText === '1') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage + 1); if (lowerCaseText === '2') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage - 1); break;
                 case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
@@ -134,12 +133,11 @@ async function handleMessage(sender_psid, webhook_event) {
             case '6': return adminHandler.promptForEditRef(sender_psid, sendText);
             case '7': return adminHandler.promptForAddMod(sender_psid, sendText);
             case '8': return adminHandler.promptForDeleteRef(sender_psid, sendText);
-            case '9': return adminHandler.toggleAdminOnlineStatus(sender_psid, sendText); // New route
+            case '9': return adminHandler.toggleAdminOnlineStatus(sender_psid, sendText);
+            case '10': return adminHandler.promptForReply_Step1_GetPSID(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
-    }
-    // --- USER COMMANDS ---
-    else {
+    } else {
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
