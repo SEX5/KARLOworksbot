@@ -1,209 +1,158 @@
-// user_handler.js (Your provided base file)
+// user_handler.js (Modified for Language Support)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
+const lang = require('./language_manager');
 
 // --- Main Menu ---
-async function showUserMenu(sender_psid, sendText) {
+async function showUserMenu(sender_psid, sendText, userLang = 'en') {
     const adminInfo = await db.getAdminInfo();
     if (adminInfo && adminInfo.is_online) {
-        // The hardcoded link is in this message
-        const onlineMessage = `The admin is currently online! 🟢\n\nYou can message them directly for assistance at:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nAlternatively, you can use the options below:`;
-        await sendText(sender_psid, onlineMessage);
+        await sendText(sender_psid, lang.getText('admin_online', userLang));
     } else {
-        const offlineMessage = `The admin is currently offline. 🔴\n\nYou can use the automated menu below for assistance.`;
-        await sendText(sender_psid, offlineMessage);
+        await sendText(sender_psid, lang.getText('admin_offline', userLang));
     }
 
-    const menu = `🌟 Welcome to KARLOWORKS ModShop! 🌟
-We're thrilled to help you unlock your gaming experience!
-Please choose an option:
-🔢 1️⃣  View available mods
-✅ 2️⃣  Check remaining replacement accounts
-🔁 3️⃣  Request a replacement account
-💰 4️⃣ Custom Gold/Money 
-📩 5️⃣  Contact the admin 
-Just type the number of your choice! 😊`;
+    const menu = `${lang.getText('welcome_message', userLang)}
+${lang.getText('menu_option_1', userLang)}
+${lang.getText('menu_option_2', userLang)}
+${lang.getText('menu_option_3', userLang)}
+${lang.getText('menu_option_4', userLang)}
+${lang.getText('menu_option_5', userLang)}
+${lang.getText('menu_suffix', userLang)}`;
     await sendText(sender_psid, menu);
-    stateManager.clearUserState(sender_psid);
+    // stateManager.clearUserState(sender_psid); // State is cleared in index.js to preserve language
 }
 
 // --- Manual Entry Fallback ---
-async function startManualEntryFlow(sender_psid, sendText, imageUrl) {
-    await sendText(sender_psid, `😔 Oops! I couldn't read your receipt automatically.
-No worries — we can still register your purchase manually! 🙌
-Please type your 13-digit GCash reference number! Remove any spaces before sending the reference number. Example 123456789123:
-(Type 'Menu' to return to the main menu.)`);
-    stateManager.setUserState(sender_psid, 'awaiting_manual_ref', { imageUrl: imageUrl });
+async function startManualEntryFlow(sender_psid, sendText, imageUrl, userLang = 'en') {
+    await sendText(sender_psid, lang.getText('manual_entry_start', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_manual_ref', { imageUrl: imageUrl, lang: userLang });
 }
 
-async function handleManualReference(sender_psid, text, sendText) {
+async function handleManualReference(sender_psid, text, sendText, userLang = 'en') {
     const refNumber = text.trim();
     if (!/^\d{13}$/.test(refNumber)) {
-        await sendText(sender_psid, `❌ That doesn't look like a valid 13-digit reference number.
-Please double-check and try again. Example: 1234567890123
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('manual_entry_invalid_ref', userLang));
         return;
     }
     const { imageUrl } = stateManager.getUserState(sender_psid);
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
-        await sendText(sender_psid, `⚠️ An issue occurred (no mods found). An admin has been notified.
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('error_no_mods_found', userLang));
         stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
         return;
     }
-    let response = `🎉 Thank you! Your reference is confirmed.
-Which Mod did you purchase? Here are the available options:
-`;
+    let response = `${lang.getText('manual_entry_thanks', userLang)}\n`;
     mods.forEach(mod => {
-        response += `🔹 Mod ${mod.id}: ${mod.name}
-   💰 Price: ${mod.price} PHP
-`;
+        response += `🔹 Mod ${mod.id}: ${mod.name}\n   💰 Price: ${mod.price} PHP\n`;
     });
-    response += `
-👉 Please reply with just the Mod number (example: 1 )
-(Type 'Menu' to return to the main menu.)`;
+    response += `\n${lang.getText('manual_entry_prompt_mod', userLang)}`;
     await sendText(sender_psid, response);
-    stateManager.setUserState(sender_psid, 'awaiting_manual_mod', { imageUrl, refNumber });
+    stateManager.setUserState(sender_psid, 'awaiting_manual_mod', { imageUrl, refNumber, lang: userLang });
 }
 
-async function handleManualModSelection(sender_psid, text, sendText, sendImage, ADMIN_ID) {
+async function handleManualModSelection(sender_psid, text, sendText, sendImage, ADMIN_ID, userLang = 'en') {
     const { imageUrl, refNumber } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
     const mod = await db.getModById(modId);
     if (isNaN(modId) || !mod) {
-        await sendText(sender_psid, `❌ That's not a valid Mod number.
-Please reply with one of the numbers from the list.
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
         return;
     }
     try {
         const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
         const claimsText = claimsAdded === 1 ? '1 replacement claim' : `${claimsAdded} replacement claims`;
-        await sendText(sender_psid, `✅ Success! Your purchase of *Mod ${mod.id}* has been registered!
-You now have *${claimsText}* available. 🎁
-An admin will verify your receipt shortly — thank you for your trust! 💙
-(Type 'Menu' to return to the main menu.)`);
+        const successMsg = lang.getText('manual_entry_success', userLang)
+            .replace('{modId}', mod.id)
+            .replace('{claimsText}', claimsText);
+        await sendText(sender_psid, successMsg);
+
         const userName = await messengerApi.getUserProfile(sender_psid);
-        const adminNotification = `⚠️ MANUAL REGISTRATION (AI FAILED) ⚠️
-User: ${userName}
-Manually Entered Info:
-- Ref No: ${refNumber}
-- Mod: ${mod.name} (ID: ${modId})
-The original receipt is attached below for verification.`;
+        const adminNotification = `⚠️ MANUAL REGISTRATION (AI FAILED) ⚠️\nUser: ${userName}\nManually Entered Info:\n- Ref No: ${refNumber}\n- Mod: ${mod.name} (ID: ${modId})\nThe original receipt is attached below for verification.`;
         await sendText(ADMIN_ID, adminNotification);
         await sendImage(ADMIN_ID, imageUrl);
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
-            await sendText(sender_psid, `⚠️ This reference number has already been used.
-Please contact an admin if you believe this is a mistake.
-(Type 'Menu' to return to the main menu.)`);
+            await sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
             const userName = await messengerApi.getUserProfile(sender_psid);
             await sendText(ADMIN_ID, `⚠️ User ${userName} tried to manually submit a DUPLICATE reference number: ${refNumber}`);
         } else {
             console.error(e);
-            await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified. Please try again later.
-(Type 'Menu' to return to the main menu.)`);
+            await sendText(sender_psid, lang.getText('error_unexpected', userLang));
         }
     }
     stateManager.clearUserState(sender_psid);
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- View Available Mods ---
-async function handleViewMods(sender_psid, sendText) {
+async function handleViewMods(sender_psid, sendText, userLang = 'en') {
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
-        return sendText(sender_psid, `📭 There are currently no mods available.
-Check back later or type Menu to return.`);
+        return sendText(sender_psid, lang.getText('mods_none_available', userLang));
     }
-    let response = `🎮 *Available Mods* 🎮
-Here’s what you can get right now:
-`;
+    let response = `${lang.getText('mods_header', userLang)}\n`;
     mods.forEach(mod => {
         const claimsText = mod.default_claims_max === 1 ? '1 Replacement' : `${mod.default_claims_max} Replacements`;
-        response += `
-📦 Type ${mod.id}: ${mod.description || 'N/A'}
-💰 Price: ${mod.price} PHP
-🔁 FreeAcc: ${claimsText}
-🖼️ Image: ${mod.image_url || 'N/A'}
-`;
+        response += `\n📦 Type ${mod.id}: ${mod.description || 'N/A'}\n💰 Price: ${mod.price} PHP\n🔁 FreeAcc: ${claimsText}\n🖼️ Image: ${mod.image_url || 'N/A'}\n`;
     });
-    response += `
-💡 To purchase, Please reply with just the Mod number (example: 1)
-🔙 To return to the menu, type: Menu`;
+    response += `\n${lang.getText('mods_purchase_prompt', userLang)}`;
     await sendText(sender_psid, response);
-    stateManager.setUserState(sender_psid, 'awaiting_want_mod');
+    stateManager.setUserState(sender_psid, 'awaiting_want_mod', { lang: userLang });
 }
 
 // --- Purchase Flow ---
-async function handleWantMod(sender_psid, text, sendText) {
+async function handleWantMod(sender_psid, text, sendText, userLang = 'en') {
     const modId = parseInt(text.replace('want mod', '').trim());
     if (isNaN(modId)) {
-        return sendText(sender_psid, `❌ Invalid format. Please type the Number. Example: (1).
-(Type 'Menu' to return to the main menu.)`);
+        return sendText(sender_psid, lang.getText('purchase_invalid_format', userLang));
     }
     const mod = await db.getModById(modId);
     if (!mod) {
-        return sendText(sender_psid, `❌ Invalid mod number. Please select a valid mod from the list.
-(Type 'Menu' to return to the main menu.)`);
+        return sendText(sender_psid, lang.getText('purchase_invalid_mod', userLang));
     }
-    await sendText(sender_psid, `✅ You selected Mod ${mod.id}: ${mod.name}!\n\nTo proceed, please provide an email address that has **NOT** been used for a CarX Street account before.\n\n(Type 'Menu' to return to the main menu.)`);
-    stateManager.setUserState(sender_psid, 'awaiting_email_for_purchase', { modId: mod.id });
+    const promptEmailMsg = lang.getText('purchase_prompt_email', userLang)
+        .replace('{modId}', mod.id)
+        .replace('{modName}', mod.name);
+    await sendText(sender_psid, promptEmailMsg);
+    stateManager.setUserState(sender_psid, 'awaiting_email_for_purchase', { modId: mod.id, lang: userLang });
 }
 
-async function handleEmailForPurchase(sender_psid, text, sendText) {
+async function handleEmailForPurchase(sender_psid, text, sendText, userLang = 'en') {
     const { modId } = stateManager.getUserState(sender_psid);
     const email = text.trim();
     
-    // Basic email format validation
     if (!/\S+@\S+\.\S+/.test(email)) {
-        await sendText(sender_psid, `❌ That doesn't look like a valid email address. Please try again.\n(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('purchase_invalid_email', userLang));
         return;
     }
 
     const mod = await db.getModById(modId);
     const adminInfo = await db.getAdminInfo();
-    const gcashNumber = adminInfo?.gcash_number || "09123963204"; // Fallback Gcash number
+    const gcashNumber = adminInfo?.gcash_number || "09123963204";
 
-    await sendText(sender_psid, `🎉 You're all set! Your email has been noted.\n\nPlease send ${mod.price} PHP via GCash to:\n 👨🏻‍💻Karl Abalunan\n📞${gcashNumber}\n\n📲 After paying, send a screenshot of your receipt to confirm your purchase.\nWe’ll verify and deliver your mod ASAP! ⏳💙\n(Type 'Menu' to return to the main menu after sending the receipt.)`);
+    const paymentMsg = lang.getText('purchase_prompt_payment', userLang)
+        .replace('{price}', mod.price)
+        .replace('{gcashNumber}', gcashNumber);
+    await sendText(sender_psid, paymentMsg);
     
-    // Set state to await the receipt, now including the email but no password
-    stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email });
+    stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, lang: userLang });
 }
-
-// The handlePasswordForPurchase function has been removed as it is no longer needed.
 
 // --- START: New Custom Mod Functions ---
-
-async function promptForCustomMod(sender_psid, sendText) {
-    const customModMenu = `💎 Custom Mods 💎
-Please choose what you'd like to order:
-
-💰 *Custom Money:*
-- 5 to 10 Million: 150 PHP
-- 10 to 30 Million: 200 PHP
-
-✨ *Custom Gold:*
-- 1k to 6k Gold: 150 PHP
-
-To order, please type your choice and the amount.
-*Examples:*
-- "Money 8 Million"
-- "Gold 5k"
-
-(Type 'Menu' to return to the main menu.)`;
-    await sendText(sender_psid, customModMenu);
-    stateManager.setUserState(sender_psid, 'awaiting_custom_mod_order');
+async function promptForCustomMod(sender_psid, sendText, userLang = 'en') {
+    await sendText(sender_psid, lang.getText('custom_mod_prompt', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_custom_mod_order', { lang: userLang });
 }
 
-async function handleCustomModOrder(sender_psid, text, sendText) {
+async function handleCustomModOrder(sender_psid, text, sendText, userLang = 'en') {
     const orderText = text.toLowerCase().trim();
     let orderType = '';
     let orderAmount = '';
     let price = 0;
 
-    // This is a simple parser, can be made more robust
     if (orderText.startsWith('money')) {
         orderType = 'Money';
         orderAmount = text.substring(5).trim();
@@ -223,23 +172,29 @@ async function handleCustomModOrder(sender_psid, text, sendText) {
     }
 
     if (price === 0) {
-        await sendText(sender_psid, `🤔 I didn't quite understand that or the amount is outside the allowed range. Please try again using the format "Money [amount]" or "Gold [amount]".\n\n*Examples:*\n- Money 8 Million\n- Gold 5k\n\n(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('custom_mod_invalid_order', userLang));
         return;
     }
 
     const adminInfo = await db.getAdminInfo();
     const gcashNumber = adminInfo?.gcash_number || "09123963204";
 
-    await sendText(sender_psid, `✅ Great! You've requested *${orderAmount} ${orderType}*.\n\nPlease send ${price} PHP via GCash to:\n 👨🏻‍💻Karl Abalunan\n📞${gcashNumber}\n\n📲 After paying, please send a screenshot of your receipt here.\n(Type 'Menu' to return to the main menu after sending the receipt.)`);
+    const paymentMsg = lang.getText('custom_mod_prompt_payment', userLang)
+        .replace('{orderAmount}', orderAmount)
+        .replace('{orderType}', orderType)
+        .replace('{price}', price)
+        .replace('{gcashNumber}', gcashNumber);
+    await sendText(sender_psid, paymentMsg);
     
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_custom_mod', {
         orderType,
         orderAmount,
-        price
+        price,
+        lang: userLang
     });
 }
 
-async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl) {
+async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang = 'en') {
     const { orderType, orderAmount, price } = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
@@ -247,260 +202,220 @@ async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage
     const userName = await messengerApi.getUserProfile(sender_psid);
 
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
-        await sendText(sender_psid, `🔍 I couldn't clearly read the amount or a valid 13-digit reference number from that receipt. An admin has been notified and will assist you shortly! 🙏`);
-        const adminNotification = `⚠️ CUSTOM MOD - AI FAILURE ⚠️
-User: ${userName}
-Order: ${orderAmount} ${orderType}
-The AI could not read the receipt. Please check manually. Receipt is attached below.`;
+        await sendText(sender_psid, lang.getText('custom_mod_receipt_fail', userLang));
+        const adminNotification = `⚠️ CUSTOM MOD - AI FAILURE ⚠️\nUser: ${userName}\nOrder: ${orderAmount} ${orderType}\nThe AI could not read the receipt. Please check manually. Receipt is attached below.`;
         await sendText(ADMIN_ID, adminNotification);
         await sendImage(ADMIN_ID, imageUrl);
         stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
         return;
     }
 
     if (amount !== price) {
-        await sendText(sender_psid, `🤔 The amount on the receipt (${amount} PHP) doesn't match the expected price (${price} PHP). An admin has been notified to assist you. Please wait for them to reach out.`);
-         const adminNotification = `⚠️ CUSTOM MOD - PRICE MISMATCH ⚠️
-User: ${userName}
-Order: ${orderAmount} ${orderType}
-Expected Price: ${price} PHP
-Paid Price: ${amount} PHP
-Ref No: ${refNumber}
-Receipt is attached below.`;
+        const mismatchMsg = lang.getText('custom_mod_mismatch', userLang)
+            .replace('{amount}', amount)
+            .replace('{price}', price);
+        await sendText(sender_psid, mismatchMsg);
+         const adminNotification = `⚠️ CUSTOM MOD - PRICE MISMATCH ⚠️\nUser: ${userName}\nOrder: ${orderAmount} ${orderType}\nExpected Price: ${price} PHP\nPaid Price: ${amount} PHP\nRef No: ${refNumber}\nReceipt is attached below.`;
         await sendText(ADMIN_ID, adminNotification);
         await sendImage(ADMIN_ID, imageUrl);
         stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
         return;
     }
 
-    await sendText(sender_psid, `✅ Thank you! Your custom mod order has been received and sent to the admin for processing. We'll get back to you shortly! 💙\n(Type 'Menu' to return to the main menu.)`);
+    await sendText(sender_psid, lang.getText('custom_mod_success', userLang));
 
-    const adminNotification = `✅ New Custom Mod Order!
-User: ${userName} (${sender_psid})
-Order: *${orderAmount} of ${orderType}*
-Price: ${price} PHP
-Ref No: ${refNumber}
-The receipt is attached below for verification.`;
+    const adminNotification = `✅ New Custom Mod Order!\nUser: ${userName} (${sender_psid})\nOrder: *${orderAmount} of ${orderType}*\nPrice: ${price} PHP\nRef No: ${refNumber}\nThe receipt is attached below for verification.`;
     await sendText(ADMIN_ID, adminNotification);
     await sendImage(ADMIN_ID, imageUrl);
     stateManager.clearUserState(sender_psid);
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- END: New Custom Mod Functions ---
 
 // --- Receipt Analysis (AI-powered) ---
-async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) {
+async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID, userLang = 'en') {
     const precollectedState = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
     const userName = await messengerApi.getUserProfile(sender_psid);
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
-        await sendText(sender_psid, `🔍 I couldn't clearly read the amount or a valid 13-digit reference number from that receipt.
-Don’t worry — an admin has been notified and will assist you shortly! 🙏
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('receipt_fail_read', userLang));
         await sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount found: ${amountStr}, Ref found: ${refNumber}. Please check manually.`);
         return;
     }
     const matchingMods = await db.getModsByPrice(amount);
     if (matchingMods.length === 1) {
         const mod = matchingMods[0];
-        let confirmationStateData = { refNumber, modId: mod.id, modName: mod.name };
-        if (precollectedState) {
-            confirmationStateData.email = precollectedState.email;
-            // password is no longer collected, so it won't be in the state
-        }
-        await sendText(sender_psid, `💳 I see a payment of ${amount} PHP.
-Did you purchase Mod ${mod.id}: ${mod.name}? 
-✅ Reply with Yes or No to confirm.
-(Type 'Menu' to return to the main menu.)`);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', confirmationStateData);
+        const confirmationMsg = lang.getText('receipt_confirm_purchase', userLang)
+            .replace('{amount}', amount)
+            .replace('{modId}', mod.id)
+            .replace('{modName}', mod.name);
+        await sendText(sender_psid, confirmationMsg);
+        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.email, lang: userLang });
     } else if (matchingMods.length > 1) {
-        let clarificationStateData = { refNumber };
-        if (precollectedState) {
-            clarificationStateData.email = precollectedState.email;
-        }
-        let response = `🔍 I see a payment of ${amount} PHP, which matches multiple mods:
-`;
-        matchingMods.forEach(m => {
-            response += `- Mod ${m.id}: ${m.name}
-`;
-        });
-        response += `
-Please type the number of the mod you purchased (e.g., *1*).
-(Type 'Menu' to return to the main menu.)`;
-        await sendText(sender_psid, response);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', clarificationStateData);
+        let modList = '';
+        matchingMods.forEach(m => { modList += `- Mod ${m.id}: ${m.name}\n`; });
+        const clarificationMsg = lang.getText('receipt_clarify_purchase', userLang)
+            .replace('{amount}', amount)
+            .replace('{modList}', modList);
+        await sendText(sender_psid, clarificationMsg);
+        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.email, lang: userLang });
     } else {
-        await sendText(sender_psid, `💳 I received your payment of ${amount} PHP, but no mod matches this price.
-An admin has been notified and will assist you shortly. 🙌
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount));
         await sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
     }
 }
 
 // --- Confirmation after Receipt ---
-async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID) {
-    // Note: password will be undefined here, which is handled correctly below
-    const { refNumber, modId, modName, email, password } = stateManager.getUserState(sender_psid);
-    if (text.toLowerCase() === 'yes') {
+async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID, userLang = 'en') {
+    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
+    if (text.toLowerCase() === 'yes' || text.toLowerCase() === 'oo') {
         try {
             const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
             const claimsText = claimsAdded === 1 ? '1 replacement claim' : `${claimsAdded} replacement claims`;
-            await sendText(sender_psid, `✅ Thank you! Your purchase of Mod ${modId} has been registered with ${claimsText}.
-(Type 'Menu' to return to the main menu.)`);
+            const successMsg = lang.getText('receipt_confirmation_success', userLang)
+                .replace('{modId}', modId)
+                .replace('{claimsText}', claimsText);
+            await sendText(sender_psid, successMsg);
+            
             const userName = await messengerApi.getUserProfile(sender_psid);
-            let adminNotification = `✅ New Order Registered!
-User: ${userName}
-Mod: ${modName} (ID: ${modId})
-Ref No: ${refNumber}`;
-            if (email) { // Only check for email now
+            let adminNotification = `✅ New Order Registered!\nUser: ${userName}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}`;
+            if (email) {
                 adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\``;
             }
             await sendText(ADMIN_ID, adminNotification);
         } catch (e) {
             if (e.message === 'Duplicate reference number') {
-                await sendText(sender_psid, `⚠️ This reference number has already been used.
-Please contact an admin if you believe this is a mistake.
-(Type 'Menu' to return to the main menu.)`);
+                await sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
                 const userName = await messengerApi.getUserProfile(sender_psid);
                 await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`);
             } else {
                 console.error(e);
-                await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.
-(Type 'Menu' to return to the main menu.)`);
+                await sendText(sender_psid, lang.getText('error_unexpected', userLang));
             }
         }
     } else {
-        await sendText(sender_psid, `❌ Okay, the transaction has been cancelled.
-If you made a mistake, feel free to contact an admin. 😊
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('receipt_transaction_cancelled', userLang));
     }
     stateManager.clearUserState(sender_psid);
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- Clarify Mod if Multiple Match ---
-async function handleModClarification(sender_psid, text, sendText, ADMIN_ID) {
-    // Note: password will be undefined here
-    const { refNumber, email, password } = stateManager.getUserState(sender_psid);
+async function handleModClarification(sender_psid, text, sendText, ADMIN_ID, userLang = 'en') {
+    const { refNumber, email } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
     const mod = await db.getModById(modId);
     if (isNaN(modId) || !mod) {
-        await sendText(sender_psid, `❌ That's not a valid Mod number. Please reply with just the number (e.g., 1).
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
         return;
     }
     try {
         const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
         const claimsText = claimsAdded === 1 ? `*1 replacement claim*` : `*${claimsAdded} replacement claims*`;
-        await sendText(sender_psid, `✅ Got it! Your purchase of *Mod ${modId}* has been registered with ${claimsText}. 🎉
-(Type 'Menu' to return to the main menu.)`);
+        const successMsg = lang.getText('receipt_clarify_success', userLang)
+            .replace('{modId}', modId)
+            .replace('{claimsText}', claimsText);
+        await sendText(sender_psid, successMsg);
+        
         const userName = await messengerApi.getUserProfile(sender_psid);
-        let adminNotification = `✅ New Order Registered!
-User: ${userName}
-Mod: ${mod.name} (ID: ${modId})
-Ref No: ${refNumber}`;
-        if (email) { // Only check for email
+        let adminNotification = `✅ New Order Registered!\nUser: ${userName}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}`;
+        if (email) {
             adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\``;
         }
         await sendText(ADMIN_ID, adminNotification);
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
-            await sendText(sender_psid, `⚠️ This reference number has already been used.
-(Type 'Menu' to return to the main menu.)`);
+            await sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
             const userName = await messengerApi.getUserProfile(sender_psid);
             await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`);
         } else {
             console.error(e);
-            await sendText(sender_psid, `🔧 An unexpected error occurred. An admin has been notified.
-(Type 'Menu' to return to the main menu.)`);
+            await sendText(sender_psid, lang.getText('error_unexpected', userLang));
         }
     }
     stateManager.clearUserState(sender_psid);
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- Check Remaining Claims ---
-async function promptForCheckClaims(sender_psid, sendText) {
-    await sendText(sender_psid, `🔍 Want to check how many replacements you have left?
-Please enter your 13-digit GCash reference number! Remove any spaces before sending the reference number. Example 123456789123:
-(Type 'Menu' to return to the main menu.)`);
-    stateManager.setUserState(sender_psid, 'awaiting_ref_for_check');
+async function promptForCheckClaims(sender_psid, sendText, userLang = 'en') {
+    await sendText(sender_psid, lang.getText('claims_check_prompt', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_ref_for_check', { lang: userLang });
 }
 
-async function processCheckClaims(sender_psid, refNumber, sendText) {
+async function processCheckClaims(sender_psid, refNumber, sendText, userLang = 'en') {
     if (!/^\d{13}$/.test(refNumber)) {
-        return sendText(sender_psid, `❌ Invalid reference number format. Please enter 13 digits.
-(Type 'Menu' to return to the main menu.)`);
+        return sendText(sender_psid, lang.getText('claims_check_invalid_format', userLang));
     }
     const ref = await db.getReference(refNumber);
     if (!ref) {
-        await sendText(sender_psid, `🔍 No purchase found with that reference number. Please double-check.
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('claims_check_not_found', userLang));
     } else {
         const remaining = ref.claims_max - ref.claims_used;
         const claimsText = remaining === 1 ? '1 replacement account' : `${remaining} replacement accounts`;
-        await sendText(sender_psid, `🎉 You have ${claimsText} left for Mod ${ref.mod_id} (${ref.mod_name}).
-(Type 'Menu' to return to the main menu.)`);
+        const resultMsg = lang.getText('claims_check_result', userLang)
+            .replace('{claimsText}', claimsText)
+            .replace('{modId}', ref.mod_id)
+            .replace('{modName}', ref.mod_name);
+        await sendText(sender_psid, resultMsg);
     }
     stateManager.clearUserState(sender_psid);
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- Request Replacement Account ---
-async function promptForReplacement(sender_psid, sendText) {
-    await sendText(sender_psid, `🔁 Ready for a replacement?
-Please provide your 13-digit GCash reference number!! Remove any spaces before sending the reference number. Example 123456789123:
-(Type 'Menu' to return to the main menu.)`);
-    stateManager.setUserState(sender_psid, 'awaiting_ref_for_replacement');
+async function promptForReplacement(sender_psid, sendText, userLang = 'en') {
+    await sendText(sender_psid, lang.getText('replace_prompt', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_ref_for_replacement', { lang: userLang });
 }
 
-async function processReplacementRequest(sender_psid, refNumber, sendText) {
+async function processReplacementRequest(sender_psid, refNumber, sendText, userLang = 'en') {
     if (!/^\d{13}$/.test(refNumber)) {
-        return sendText(sender_psid, `❌ Invalid reference number format.
-(Type 'Menu' to return to the main menu.)`);
+        return sendText(sender_psid, lang.getText('claims_check_invalid_format', userLang));
     }
     const ref = await db.getReference(refNumber);
     if (!ref || ref.claims_used >= ref.claims_max) {
-        await sendText(sender_psid, `❌ No replacement accounts available for this reference number.
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('replace_no_claims', userLang));
         stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
         return;
     }
     const account = await db.getAvailableAccount(ref.mod_id);
     if (!account) {
-        await sendText(sender_psid, `🛒 Sorry, no replacement accounts are in stock for your mod.
-An admin will restock soon — please contact them for updates.
-(Type 'Menu' to return to the main menu.)`);
+        await sendText(sender_psid, lang.getText('replace_no_stock', userLang));
         stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
         return;
     }
     await db.claimAccount(account.id);
     await db.useClaim(ref.ref_number);
-    await sendText(sender_psid, `🎉 Here’s your replacement account! 
-🎮 Mod: ${ref.mod_id}
-📧 Username: \`${account.username}\`
-🔐 Password: \`${account.password}\`
-Enjoy! And thank you for trusting us! 💙
-(Type 'Menu' to return to the main menu.)`);
+    const successMsg = lang.getText('replace_success', userLang)
+        .replace('{modId}', ref.mod_id)
+        .replace('{username}', account.username)
+        .replace('{password}', account.password);
+    await sendText(sender_psid, successMsg);
     stateManager.clearUserState(sender_psid);
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- Contact Admin ---
-async function promptForAdminMessage(sender_psid, sendText) {
-    await sendText(sender_psid, `📩 Got a question or need help?
-Please type your message, and I’ll forward it to the admin right away!
-(Type 'Menu' to return to the main menu.)`);
-    stateManager.setUserState(sender_psid, 'awaiting_admin_message');
+async function promptForAdminMessage(sender_psid, sendText, userLang = 'en') {
+    await sendText(sender_psid, lang.getText('contact_admin_prompt', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_admin_message', { lang: userLang });
 }
 
-async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID) {
+async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID, userLang = 'en') {
     const userName = await messengerApi.getUserProfile(sender_psid);
-    const forwardMessage = `📩 Message from user ${userName}:
-"${text}"`;
+    const forwardMessage = `📩 Message from user ${userName}:\n"${text}"`;
     await sendText(ADMIN_ID, forwardMessage);
-    await sendText(sender_psid, `✅ Your message has been sent to the admin!
-We’ll get back to you as soon as possible. Thank you for reaching out! 🙌
-(Type 'Menu' to return to the main menu.)`);
+    await sendText(sender_psid, lang.getText('contact_admin_success', userLang));
     stateManager.clearUserState(sender_psid);
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- Export All Functions ---
