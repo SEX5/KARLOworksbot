@@ -21,7 +21,6 @@ Please choose an option:
 🔢 1️⃣  View available mods
 ✅ 2️⃣  Check remaining replacement accounts
 🔁 3️⃣  Request a replacement account
- CUSTOM MODS 
 💰 4️⃣ Custom Gold/Money 
 📩 5️⃣  Contact the admin 
 Just type the number of your choice! 😊`;
