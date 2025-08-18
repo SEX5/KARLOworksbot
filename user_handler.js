@@ -125,7 +125,7 @@ Here’s what you can get right now:
         response += `
 📦 Type ${mod.id}: ${mod.description || 'N/A'}
 💰 Price: ${mod.price} PHP
-🔁 FreeClaims: ${claimsText}
+🔁 FreeAcc: ${claimsText}
 🖼️ Image: ${mod.image_url || 'N/A'}
 `;
     });
