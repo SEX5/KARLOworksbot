@@ -1,4 +1,4 @@
-// index.js (Final & Complete)
+// index.js (Modified for Language Support)
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -30,7 +30,11 @@ async function sendImage(psid, imageUrl) {
 }
 
 async function handleReceiptSubmission(sender_psid, imageUrl) {
-    await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
+    // Get language before sending "analyzing" message
+    const userState = stateManager.getUserState(sender_psid);
+    const userLang = userState?.lang || 'en';
+    
+    await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment..."); // This can stay hardcoded as it's a temporary status
     try {
         const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
@@ -43,21 +47,18 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
         fs.writeFileSync(imagePath, imageBuffer);
 
-        const userState = stateManager.getUserState(sender_psid);
         if (userState?.state === 'awaiting_receipt_for_custom_mod') {
-             await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl);
+             await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
         } else {
-             await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID);
+             await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID, userLang);
         }
 
     } catch (error) {
-        console.error("Error in handleReceiptSubmission, starting manual flow:", error.message);
+        console.error("Error in handleReceiptSubmission:", error.message);
         const userState = stateManager.getUserState(sender_psid);
-        // Only start manual flow for standard purchases, not custom mods
         if (userState?.state === 'awaiting_receipt_for_purchase') {
-            await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl);
+            await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl, userLang);
         } else {
-            // For custom mods, a manual flow is not defined, so just notify admin
             await sendText(sender_psid, "An error occurred while analyzing your receipt. An admin has been notified and will assist you shortly.");
             await sendText(ADMIN_ID, `An unexpected error occurred for user ${sender_psid} during a custom mod receipt submission. Please check the logs and contact the user.`);
         }
@@ -65,10 +66,32 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
 }
 
 async function handleMessage(sender_psid, webhook_event) {
-    const userStateObj_preCheck = stateManager.getUserState(sender_psid);
-    const expectingReceipt = userStateObj_preCheck?.state === 'awaiting_receipt_for_purchase' || userStateObj_preCheck?.state === 'awaiting_receipt_for_custom_mod';
+    const userStateObj = stateManager.getUserState(sender_psid);
     const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
     const lowerCaseText = messageText?.toLowerCase();
+
+    // --- START: Language Selection Logic ---
+    if (!userStateObj || !userStateObj.lang) {
+        if (lowerCaseText === 'english' || lowerCaseText === '1') {
+            stateManager.setUserState(sender_psid, 'language_set', { lang: 'en' });
+            await userHandler.showUserMenu(sender_psid, sendText, 'en');
+            return;
+        } else if (lowerCaseText === 'tagalog' || lowerCaseText === '2') {
+            stateManager.setUserState(sender_psid, 'language_set', { lang: 'tl' });
+            await userHandler.showUserMenu(sender_psid, sendText, 'tl');
+            return;
+        } else {
+            const langPrompt = "Please select your language:\n\n1. English\n2. Tagalog";
+            await sendText(sender_psid, langPrompt);
+            stateManager.setUserState(sender_psid, 'awaiting_language_choice', {});
+            return;
+        }
+    }
+    // --- END: Language Selection Logic ---
+    
+    const userLang = userStateObj.lang;
+
+    const expectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
 
     if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
         if (!webhook_event.message?.sticker_id) {
@@ -81,20 +104,21 @@ async function handleMessage(sender_psid, webhook_event) {
     if (expectingReceipt && messageText) {
         await sendText(sender_psid, "It looks like you sent a message instead of a receipt, so the purchase has been cancelled. Feel free to start again from the menu! 😊");
         stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
         return;
     }
 
     if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
         console.log(`Non-text message detected from ${sender_psid}, sending menu.`);
         const isAdmin = await dbManager.isAdmin(sender_psid);
-        // Do not clear state here, let timeout handle it
-        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText);
+        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText, userLang);
     }
 
     if (lowerCaseText === 'menu') {
         stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang }); // Re-save language preference
         const isAdmin = await dbManager.isAdmin(sender_psid);
-        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText);
+        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText, userLang);
     }
 
     if (lowerCaseText === 'setup admin') {
@@ -112,9 +136,9 @@ async function handleMessage(sender_psid, webhook_event) {
     }
 
     const isAdmin = await dbManager.isAdmin(sender_psid);
-    const userStateObj = stateManager.getUserState(sender_psid);
 
     if (isAdmin) {
+        // Admin logic doesn't need language support, so it remains unchanged
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
@@ -153,28 +177,29 @@ async function handleMessage(sender_psid, webhook_event) {
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
     } else {
+        // User logic now passes userLang to every function call
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
-                case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, messageText, sendText);
-                case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, messageText, sendText, sendImage, ADMIN_ID);
-                case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, messageText, sendText);
-                case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID);
-                case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, messageText, sendText, ADMIN_ID);
-                case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, messageText, sendText);
-                case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, messageText, sendText);
-                case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, messageText, sendText);
-                case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, messageText, sendText, ADMIN_ID);
-                case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, messageText, sendText);
+                case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, messageText, sendText, userLang);
+                case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, messageText, sendText, sendImage, ADMIN_ID, userLang);
+                case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, messageText, sendText, userLang);
+                case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID, userLang);
+                case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, messageText, sendText, ADMIN_ID, userLang);
+                case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, messageText, sendText, userLang);
+                case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, messageText, sendText, userLang);
+                case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, messageText, sendText, userLang);
+                case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, messageText, sendText, ADMIN_ID, userLang);
+                case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, messageText, sendText, userLang);
             }
         }
         switch (lowerCaseText) {
-            case '1': return userHandler.handleViewMods(sender_psid, sendText);
-            case '2': return userHandler.promptForCheckClaims(sender_psid, sendText);
-            case '3': return userHandler.promptForReplacement(sender_psid, sendText);
-            case '4': return userHandler.promptForCustomMod(sender_psid, sendText);
-            case '5': return userHandler.promptForAdminMessage(sender_psid, sendText);
-            default: return userHandler.showUserMenu(sender_psid, sendText);
+            case '1': return userHandler.handleViewMods(sender_psid, sendText, userLang);
+            case '2': return userHandler.promptForCheckClaims(sender_psid, sendText, userLang);
+            case '3': return userHandler.promptForReplacement(sender_psid, sendText, userLang);
+            case '4': return userHandler.promptForCustomMod(sender_psid, sendText, userLang);
+            case '5': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
+            default: return userHandler.showUserMenu(sender_psid, sendText, userLang);
         }
     }
 }
