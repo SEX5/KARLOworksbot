@@ -21,7 +21,9 @@ Please choose an option:
 🔢 1️⃣  View available mods
 ✅ 2️⃣  Check remaining replacement accounts
 🔁 3️⃣  Request a replacement account
-📩 4️⃣  Contact the admin
+ CUSTOM MODS 
+💰 4️⃣ Custom Gold/Money 
+📩 5️⃣  Contact the admin 
 Just type the number of your choice! 😊`;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
@@ -172,6 +174,120 @@ async function handleEmailForPurchase(sender_psid, text, sendText) {
 }
 
 // The handlePasswordForPurchase function has been removed as it is no longer needed.
+
+// --- START: New Custom Mod Functions ---
+
+async function promptForCustomMod(sender_psid, sendText) {
+    const customModMenu = `💎 Custom Mods 💎
+Please choose what you'd like to order:
+
+💰 *Custom Money:*
+- 5 to 10 Million: 150 PHP
+- 10 to 30 Million: 200 PHP
+
+✨ *Custom Gold:*
+- 1k to 6k Gold: 150 PHP
+
+To order, please type your choice and the amount.
+*Examples:*
+- "Money 8 Million"
+- "Gold 5k"
+
+(Type 'Menu' to return to the main menu.)`;
+    await sendText(sender_psid, customModMenu);
+    stateManager.setUserState(sender_psid, 'awaiting_custom_mod_order');
+}
+
+async function handleCustomModOrder(sender_psid, text, sendText) {
+    const orderText = text.toLowerCase().trim();
+    let orderType = '';
+    let orderAmount = '';
+    let price = 0;
+
+    // This is a simple parser, can be made more robust
+    if (orderText.startsWith('money')) {
+        orderType = 'Money';
+        orderAmount = text.substring(5).trim();
+        const amountMil = parseFloat(orderAmount.replace(/[^0-9.]/g, ''));
+        if (amountMil >= 5 && amountMil <= 10) {
+            price = 150;
+        } else if (amountMil > 10 && amountMil <= 30) {
+            price = 200;
+        }
+    } else if (orderText.startsWith('gold')) {
+        orderType = 'Gold';
+        orderAmount = text.substring(4).trim();
+        const amountK = parseFloat(orderAmount.replace(/[^0-9.]/g, ''));
+        if (amountK >= 1 && amountK <= 6) {
+            price = 150;
+        }
+    }
+
+    if (price === 0) {
+        await sendText(sender_psid, `🤔 I didn't quite understand that or the amount is outside the allowed range. Please try again using the format "Money [amount]" or "Gold [amount]".\n\n*Examples:*\n- Money 8 Million\n- Gold 5k\n\n(Type 'Menu' to return to the main menu.)`);
+        return;
+    }
+
+    const adminInfo = await db.getAdminInfo();
+    const gcashNumber = adminInfo?.gcash_number || "09123963204";
+
+    await sendText(sender_psid, `✅ Great! You've requested *${orderAmount} ${orderType}*.\n\nPlease send ${price} PHP via GCash to:\n 👨🏻‍💻Karl Abalunan\n📞${gcashNumber}\n\n📲 After paying, please send a screenshot of your receipt here.\n(Type 'Menu' to return to the main menu after sending the receipt.)`);
+    
+    stateManager.setUserState(sender_psid, 'awaiting_receipt_for_custom_mod', {
+        orderType,
+        orderAmount,
+        price
+    });
+}
+
+async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl) {
+    const { orderType, orderAmount, price } = stateManager.getUserState(sender_psid);
+    const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
+    const amount = parseFloat(amountStr);
+    const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
+    const userName = await messengerApi.getUserProfile(sender_psid);
+
+    if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
+        await sendText(sender_psid, `🔍 I couldn't clearly read the amount or a valid 13-digit reference number from that receipt. An admin has been notified and will assist you shortly! 🙏`);
+        const adminNotification = `⚠️ CUSTOM MOD - AI FAILURE ⚠️
+User: ${userName}
+Order: ${orderAmount} ${orderType}
+The AI could not read the receipt. Please check manually. Receipt is attached below.`;
+        await sendText(ADMIN_ID, adminNotification);
+        await sendImage(ADMIN_ID, imageUrl);
+        stateManager.clearUserState(sender_psid);
+        return;
+    }
+
+    if (amount !== price) {
+        await sendText(sender_psid, `🤔 The amount on the receipt (${amount} PHP) doesn't match the expected price (${price} PHP). An admin has been notified to assist you. Please wait for them to reach out.`);
+         const adminNotification = `⚠️ CUSTOM MOD - PRICE MISMATCH ⚠️
+User: ${userName}
+Order: ${orderAmount} ${orderType}
+Expected Price: ${price} PHP
+Paid Price: ${amount} PHP
+Ref No: ${refNumber}
+Receipt is attached below.`;
+        await sendText(ADMIN_ID, adminNotification);
+        await sendImage(ADMIN_ID, imageUrl);
+        stateManager.clearUserState(sender_psid);
+        return;
+    }
+
+    await sendText(sender_psid, `✅ Thank you! Your custom mod order has been received and sent to the admin for processing. We'll get back to you shortly! 💙\n(Type 'Menu' to return to the main menu.)`);
+
+    const adminNotification = `✅ New Custom Mod Order!
+User: ${userName} (${sender_psid})
+Order: *${orderAmount} of ${orderType}*
+Price: ${price} PHP
+Ref No: ${refNumber}
+The receipt is attached below for verification.`;
+    await sendText(ADMIN_ID, adminNotification);
+    await sendImage(ADMIN_ID, imageUrl);
+    stateManager.clearUserState(sender_psid);
+}
+
+// --- END: New Custom Mod Functions ---
 
 // --- Receipt Analysis (AI-powered) ---
 async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID) {
@@ -406,5 +522,9 @@ module.exports = {
     forwardMessageToAdmin,
     startManualEntryFlow,
     handleManualReference,
-    handleManualModSelection
+    handleManualModSelection,
+    // Add new custom mod functions to exports
+    promptForCustomMod,
+    handleCustomModOrder,
+    handleCustomModReceipt
 };
