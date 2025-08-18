@@ -1,0 +1,60 @@
+{
+  "welcome_message": "🌟 Welcome sa KARLOWORKS ModShop! 🌟\nGame na kaming tulungan ka para mas ma-enjoy mo ang paglalaro!\nPumili ka lang ng option sa baba:",
+  "menu_option_1": "🔢 1️⃣  Tingnan ang mga available na mod",
+  "menu_option_2": "✅ 2️⃣  i-Check ang natitirang replacement accounts",
+  "menu_option_3": "🔁 3️⃣  Mag-request ng replacement account",
+  "menu_option_4": "💰 4️⃣  Custom Gold/Money",
+  "menu_option_5": "📩 5️⃣  Kausapin ang admin",
+  "menu_suffix": "I-type lang ang number na napili mo! 😊",
+  "admin_online": "Online ang admin ngayon! 🟢\n\nPuwede mo siyang i-message diretso para sa tulong sa link na ito:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nPwede ka ring pumili sa mga option sa baba:",
+  "admin_offline": "Offline muna ang admin ngayon. 🔴\n\nPwede mong gamitin ang automated menu sa baba para sa tulong.",
+
+  "manual_entry_start": "😔 Ay, sorry! Hindi ko mabasa 'yung resibo mo.\nPero 'wag mag-alala, puwede nating i-register 'yan manually! 🙌\nPaki-type ang iyong 13-digit GCash reference number. 'Wag lagyan ng space. Example: 123456789123:\n(I-type ang 'Menu' para bumalik.)",
+  "manual_entry_invalid_ref": "❌ Mukhang hindi valid 'yung 13-digit reference number na nilagay mo.\nPaki-double check at subukan ulit. Example: 1234567890123\n(I-type ang 'Menu' para bumalik.)",
+  "manual_entry_thanks": "🎉 Salamat! Confirmed na ang reference number mo.\nAling Mod ang binili mo? Eto ang mga pagpipilian:",
+  "manual_entry_prompt_mod": "👉 Paki-reply lang ng Mod number (example: 1 )\n(I-type ang 'Menu' para bumalik.)",
+  "manual_entry_invalid_mod": "❌ Hindi valid 'yang Mod number.\nPumili lang ng number mula sa listahan.\n(I-type ang 'Menu' para bumalik.)",
+  "manual_entry_success": "✅ Success! Registered na ang binili mong *Mod {modId}*!\nMayroon ka nang *{claimsText}* na available. 🎁\nIve-verify ng admin ang resibo mo maya-maya. Salamat sa tiwala! 💙\n(I-type ang 'Menu' para bumalik.)",
+
+  "mods_header": "🎮 *Mga Available na Mods* 🎮\nEto ang mga puwede mong makuha ngayon:",
+  "mods_purchase_prompt": "💡 Para bumili, i-reply lang ang Mod number (example: 1)\n🔙 Para bumalik sa menu, i-type: Menu",
+  "mods_none_available": "📭 Pasensya na, wala pang available na mods sa ngayon.\nBalik ka na lang ulit or i-type ang Menu para bumalik.",
+
+  "purchase_invalid_format": "❌ Invalid 'yung format. Paki-type lang ang numero. Example: (1).\n(I-type ang 'Menu' para bumalik.)",
+  "purchase_invalid_mod": "❌ Invalid 'yung mod number. Pumili ng valid na mod galing sa listahan.\n(I-type ang 'Menu' para bumalik.)",
+  "purchase_prompt_email": "✅ Napili mo ang Mod {modId}: {modName}!\n\nPara magpatuloy, kailangan namin ng email address na **HINDI** pa nagagamit sa kahit anong CarX Street account.\n\n(I-type ang 'Menu' para bumalik.)",
+  "purchase_invalid_email": "❌ Mukhang hindi valid 'yung email address. Pakisubukan ulit.\n(I-type ang 'Menu' para bumalik.)",
+  "purchase_prompt_payment": "🎉 Ayos! Nakuha na namin ang email mo.\n\nPaki-send ang {price} PHP sa GCash na ito:\n 👨🏻‍💻Karl Abalunan\n📞{gcashNumber}\n\n📲 Pagkatapos magbayad, paki-send ang screenshot ng resibo dito para ma-confirm ang purchase.\nIve-verify namin at ibibigay ang mod mo ASAP! ⏳💙\n(I-type ang 'Menu' para bumalik pagkatapos i-send ang resibo.)",
+
+  "receipt_fail_read": "🔍 Hindi ko masyadong makita 'yung amount o 'yung 13-digit reference number sa resibo.\nPero 'wag mag-alala, na-notify na ang admin para tulungan ka! 🙏\n(I-type ang 'Menu' para bumalik.)",
+  "receipt_confirm_purchase": "💳 Nakita ko ang bayad na {amount} PHP.\nBinili mo ba ang Mod {modId}: {modName}?\n✅ Mag-reply ng Yes o No para i-confirm.\n(I-type ang 'Menu' para bumalik.)",
+  "receipt_clarify_purchase": "🔍 Nakita ko ang bayad na {amount} PHP, pero tumutugma ito sa maraming mods:\n{modList}\nPaki-type ang number ng mod na binili mo (e.g., *1*).\n(I-type ang 'Menu' para bumalik.)",
+  "receipt_no_match": "💳 Nareceive ko ang bayad mong {amount} PHP, pero walang mod na katugma ng presyo na 'to.\nNa-notify na ang admin para tulungan ka. 🙌\n(I-type ang 'Menu' para bumalik.)",
+  "receipt_confirmation_success": "✅ Salamat! Registered na ang binili mong Mod {modId} at may kasama itong {claimsText}.\n(I-type ang 'Menu' para bumalik.)",
+  "receipt_clarify_success": "✅ Gets! Registered na ang binili mong *Mod {modId}* at may kasama itong {claimsText}. 🎉\n(I-type ang 'Menu' para bumalik.)",
+  "receipt_transaction_cancelled": "❌ Okay, na-cancel na ang transaction.\nKung nagkamali ka, 'wag mag-atubiling kausapin ang admin. 😊\n(I-type ang 'Menu' para bumalik.)",
+
+  "error_duplicate_ref": "⚠️ Nagamit na ang reference number na ito.\nMaki-contact sa admin kung sa tingin mo ay may pagkakamali.\n(I-type ang 'Menu' para bumalik.)",
+  "error_unexpected": "🔧 Nagkaroon ng error. Na-notify na ang admin. Paki-try na lang ulit mamaya.\n(I-type ang 'Menu' para bumalik.)",
+  "error_no_mods_found": "⚠️ Nagkaroon ng issue (walang mods na nahanap). Na-notify na ang admin.\n(I-type ang 'Menu' para bumalik.)",
+
+  "claims_check_prompt": "🔍 Gusto mo bang i-check kung ilang replacements na lang ang natitira sa'yo?\nPaki-enter ang iyong 13-digit GCash reference number. 'Wag lagyan ng space. Example: 123456789123:\n(I-type ang 'Menu' para bumalik.)",
+  "claims_check_invalid_format": "❌ Mali 'yung format ng reference number. Dapat 13-digits.\n(I-type ang 'Menu' para bumalik.)",
+  "claims_check_not_found": "🔍 Walang purchase na nakita gamit ang reference number na 'yan. Paki-double check.\n(I-type ang 'Menu' para bumalik.)",
+  "claims_check_result": "🎉 Mayroon ka pang {claimsText} na natitira para sa Mod {modId} ({modName}).\n(I-type ang 'Menu' para bumalik.)",
+
+  "replace_prompt": "🔁 Ready ka na para sa replacement?\nPaki-provide ang iyong 13-digit GCash reference number. 'Wag lagyan ng space. Example: 123456789123:\n(I-type ang 'Menu' para bumalik.)",
+  "replace_no_claims": "❌ Wala nang available na replacement account para sa ref number na 'to.\n(I-type ang 'Menu' para bumalik.)",
+  "replace_no_stock": "🛒 Sorry, ubos na ang stock ng replacement accounts para sa mod mo.\nMagre-restock ang admin soon — kausapin mo sila para sa updates.\n(I-type ang 'Menu' para bumalik.)",
+  "replace_success": "🎉 Eto na ang replacement account mo!\n🎮 Mod: {modId}\n📧 Username: `{username}`\n🔐 Password: `{password}`\nEnjoy! At salamat sa tiwala! 💙\n(I-type ang 'Menu' para bumalik.)",
+
+  "contact_admin_prompt": "📩 May tanong ka o kailangan mo ng tulong?\nI-type mo lang ang message mo, at ipapasa ko agad sa admin!\n(I-type ang 'Menu' para bumalik.)",
+  "contact_admin_success": "✅ Na-send na ang message mo sa admin!\nBabakikan ka namin sa lalong madaling panahon. Salamat sa pag-reach out! 🙌\n(I-type ang 'Menu' para bumalik.)",
+  
+  "custom_mod_prompt": "💎 Custom Mods 💎\nPumili ka kung ano ang gusto mong i-order:\n\n💰 *Custom Money:*\n- 5 to 10 Million: 150 PHP\n- 10 to 30 Million: 200 PHP\n\n✨ *Custom Gold:*\n- 1k to 6k Gold: 150 PHP\n\nPara umorder, i-type ang pinili mo at ang amount.\n*Mga Example:*\n- \"Money 8 Million\"\n- \"Gold 5k\"\n\n(I-type ang 'Menu' para bumalik.)",
+  "custom_mod_invalid_order": "🤔 Pasensya na, 'di ko naintindihan 'yun o wala sa range 'yung amount. Paki-try ulit gamit ang format na \"Money [amount]\" o \"Gold [amount]\".\n\n*Mga Example:*\n- Money 8 Million\n- Gold 5k\n\n(I-type ang 'Menu' para bumalik.)",
+  "custom_mod_prompt_payment": "✅ Galing! Nag-request ka ng *{orderAmount} {orderType}*.\n\nPaki-send ang {price} PHP sa GCash na ito:\n 👨🏻‍💻Karl Abalunan\n📞{gcashNumber}\n\n📲 Pagkatapos magbayad, paki-send ang screenshot ng resibo dito.\n(I-type ang 'Menu' para bumalik pagkatapos i-send ang resibo.)",
+  "custom_mod_receipt_fail": "🔍 Hindi ko masyadong makita 'yung amount o 'yung 13-digit reference number sa resibo. Na-notify na ang admin para tulungan ka! 🙏",
+  "custom_mod_mismatch": "🤔 Hmm, hindi tugma 'yung amount sa resibo ({amount} PHP) sa inaasahang presyo ({price} PHP). Na-notify na ang admin para tulungan ka. Hintayin mo na lang sila.",
+  "custom_mod_success": "✅ Salamat! Nareceive na namin ang custom mod order mo at pinaprocess na ng admin. Babalikan ka namin agad! 💙\n(I-type ang 'Menu' para bumalik.)"
+}
