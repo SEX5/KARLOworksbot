@@ -81,7 +81,7 @@ async function handleMessage(sender_psid, webhook_event) {
             await userHandler.showUserMenu(sender_psid, sendText, 'tl');
             return;
         } else {
-            const langPrompt = "Please select your language:\n\n1. English\n2. Tagalog";
+            const langPrompt = "Please select your language type the number only:\n\n1. English\n2. Tagalog";
             await sendText(sender_psid, langPrompt);
             stateManager.setUserState(sender_psid, 'awaiting_language_choice', {});
             return;
