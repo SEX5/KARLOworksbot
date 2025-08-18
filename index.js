@@ -1,4 +1,4 @@
-// index.js (Modified for Language Support)
+// index.js (Corrected Logic)
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -30,11 +30,10 @@ async function sendImage(psid, imageUrl) {
 }
 
 async function handleReceiptSubmission(sender_psid, imageUrl) {
-    // Get language before sending "analyzing" message
     const userState = stateManager.getUserState(sender_psid);
     const userLang = userState?.lang || 'en';
     
-    await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment..."); // This can stay hardcoded as it's a temporary status
+    await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
     try {
         const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
@@ -66,88 +65,32 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
 }
 
 async function handleMessage(sender_psid, webhook_event) {
-    const userStateObj = stateManager.getUserState(sender_psid);
     const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
     const lowerCaseText = messageText?.toLowerCase();
-
-    // --- START: Language Selection Logic ---
-    if (!userStateObj || !userStateObj.lang) {
-        if (lowerCaseText === 'english' || lowerCaseText === '1') {
-            stateManager.setUserState(sender_psid, 'language_set', { lang: 'en' });
-            await userHandler.showUserMenu(sender_psid, sendText, 'en');
-            return;
-        } else if (lowerCaseText === 'tagalog' || lowerCaseText === '2') {
-            stateManager.setUserState(sender_psid, 'language_set', { lang: 'tl' });
-            await userHandler.showUserMenu(sender_psid, sendText, 'tl');
-            return;
-        } else {
-            const langPrompt = "Please select your language type the number only:\n\n1. English\n2. Tagalog";
-            await sendText(sender_psid, langPrompt);
-            stateManager.setUserState(sender_psid, 'awaiting_language_choice', {});
-            return;
-        }
-    }
-    // --- END: Language Selection Logic ---
     
-    const userLang = userStateObj.lang;
-
-    const expectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
-
-    if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
-        if (!webhook_event.message?.sticker_id) {
-            const imageUrl = webhook_event.message.attachments[0].payload.url;
-            await handleReceiptSubmission(sender_psid, imageUrl);
-        }
-        return;
-    }
-    
-    if (expectingReceipt && messageText) {
-        await sendText(sender_psid, "It looks like you sent a message instead of a receipt, so the purchase has been cancelled. Feel free to start again from the menu! 😊");
-        stateManager.clearUserState(sender_psid);
-        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-        return;
-    }
-
-    if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
-        console.log(`Non-text message detected from ${sender_psid}, sending menu.`);
-        const isAdmin = await dbManager.isAdmin(sender_psid);
-        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText, userLang);
-    }
-
-    if (lowerCaseText === 'menu') {
-        stateManager.clearUserState(sender_psid);
-        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang }); // Re-save language preference
-        const isAdmin = await dbManager.isAdmin(sender_psid);
-        return isAdmin ? adminHandler.showAdminMenu(sender_psid, sendText) : userHandler.showUserMenu(sender_psid, sendText, userLang);
-    }
-
-    if (lowerCaseText === 'setup admin') {
-        if (sender_psid === ADMIN_ID) {
-            await sendText(sender_psid, "✅ Setup initiated!\nPlease enter your GCash number and name in the format:\n`<11 or 13 digit number> <Your Name>`\n(e.g., 09123456789 John Doe)");
-            stateManager.setUserState(sender_psid, 'awaiting_edit_admin');
-            return;
-        } else {
-            return sendText(sender_psid, "You are not authorized to perform this setup.");
-        }
-    }
-
-    if (lowerCaseText === 'my id') {
-        return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`);
-    }
-
+    // --- FIX: MOVED ADMIN CHECK TO THE TOP ---
     const isAdmin = await dbManager.isAdmin(sender_psid);
 
     if (isAdmin) {
-        // Admin logic doesn't need language support, so it remains unchanged
+        // --- ADMIN LOGIC ---
+        // If the user is an admin, completely bypass language selection and user menus.
+        const userStateObj = stateManager.getUserState(sender_psid);
         const state = userStateObj?.state;
+
+        if (lowerCaseText === 'menu') {
+            stateManager.clearUserState(sender_psid);
+            return adminHandler.showAdminMenu(sender_psid, sendText);
+        }
+
+        if (lowerCaseText === 'my id') {
+            return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`);
+        }
+        
         if (state) {
             switch (state) {
-                case 'awaiting_reply_psid': 
-                    return adminHandler.promptForReply_Step2_GetUsername(sender_psid, messageText, sendText);
-                case 'awaiting_reply_username': 
-                    return adminHandler.promptForReply_Step3_GetPassword(sender_psid, messageText, sendText);
-                case 'awaiting_reply_password': 
-                    return adminHandler.processReply_Step4_Send(sender_psid, messageText, sendText);
+                case 'awaiting_reply_psid': return adminHandler.promptForReply_Step2_GetUsername(sender_psid, messageText, sendText);
+                case 'awaiting_reply_username': return adminHandler.promptForReply_Step3_GetPassword(sender_psid, messageText, sendText);
+                case 'awaiting_reply_password': return adminHandler.processReply_Step4_Send(sender_psid, messageText, sendText);
                 case 'viewing_references': const currentPage = userStateObj.page || 1; if (lowerCaseText === '1') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage + 1); if (lowerCaseText === '2') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage - 1); break;
                 case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
                 case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
@@ -176,8 +119,61 @@ async function handleMessage(sender_psid, webhook_event) {
             case '10': return adminHandler.promptForReply_Step1_GetPSID(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
+
     } else {
-        // User logic now passes userLang to every function call
+        // --- USER LOGIC ---
+        // If the user is not an admin, proceed with the language check and regular flow.
+        const userStateObj = stateManager.getUserState(sender_psid);
+
+        if (!userStateObj || !userStateObj.lang) {
+            if (lowerCaseText === 'english' || lowerCaseText === '1') {
+                stateManager.setUserState(sender_psid, 'language_set', { lang: 'en' });
+                await userHandler.showUserMenu(sender_psid, sendText, 'en');
+                return;
+            } else if (lowerCaseText === 'tagalog' || lowerCaseText === '2') {
+                stateManager.setUserState(sender_psid, 'language_set', { lang: 'tl' });
+                await userHandler.showUserMenu(sender_psid, sendText, 'tl');
+                return;
+            } else {
+                const langPrompt = "Please select your language type the number only:\n\n1. English\n2. Tagalog";
+                await sendText(sender_psid, langPrompt);
+                stateManager.setUserState(sender_psid, 'awaiting_language_choice', {});
+                return;
+            }
+        }
+        
+        const userLang = userStateObj.lang;
+        const expectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
+
+        if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
+            if (!webhook_event.message?.sticker_id) {
+                const imageUrl = webhook_event.message.attachments[0].payload.url;
+                await handleReceiptSubmission(sender_psid, imageUrl);
+            }
+            return;
+        }
+        
+        if (expectingReceipt && messageText) {
+            await sendText(sender_psid, "It looks like you sent a message instead of a receipt, so the purchase has been cancelled. Feel free to start again from the menu! 😊");
+            stateManager.clearUserState(sender_psid);
+            stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+            return;
+        }
+
+        if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
+            return userHandler.showUserMenu(sender_psid, sendText, userLang);
+        }
+
+        if (lowerCaseText === 'menu') {
+            stateManager.clearUserState(sender_psid);
+            stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+            return userHandler.showUserMenu(sender_psid, sendText, userLang);
+        }
+        
+        if (lowerCaseText === 'my id') {
+             return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`);
+        }
+
         const state = userStateObj?.state;
         if (state) {
             switch (state) {
