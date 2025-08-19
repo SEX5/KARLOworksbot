@@ -1,4 +1,4 @@
-// index.js (With Correct Humanizer Key and Auto-Ping)
+// index.js (With Corrected Humanizer Key)
 const express = require('express');
 const axios = require('axios');
 const secrets = require('./secrets.js');
@@ -306,19 +306,20 @@ async function handleGhibliRequest(psid, imageUrl) {
     }
 }
 
-// --- UPDATED HUMANIZER REQUEST HANDLER ---
+// --- CORRECTED HUMANIZER REQUEST HANDLER ---
 async function handleHumanizerRequest(psid, text) {
     await sendText(psid, "✍️ Humanizing your text... Please wait.");
     try {
-        // --- THIS IS THE CORRECT API KEY ---
         const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
         const apiUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=${encodeURIComponent(text)}&apikey=${apiKey}`;
         
         const response = await axios.get(apiUrl);
 
-        if (response.data && response.data.result) {
+        // --- THE FIX IS HERE ---
+        // We now correctly check for the "response" key instead of "result".
+        if (response.data && response.data.response) {
             await sendText(psid, "✅ Here is the humanized version:");
-            await sendText(psid, response.data.result);
+            await sendText(psid, response.data.response); // Use the correct key here
         } else {
             const errorMessage = response.data?.error || "The API returned an unexpected response.";
             await sendText(psid, `❌ Sorry, something went wrong: ${errorMessage}`);
@@ -407,6 +408,10 @@ async function sendGenericTemplate(psid, elements) {
     }
 }
 
+app.get('/', (req, res) => {
+    res.status(200).send('✅ Multi-Tool Bot is online and healthy.');
+});
+
 app.get('/webhook', (req, res) => {
     const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
@@ -440,12 +445,7 @@ app.post('/webhook', (req, res) => {
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is listening on port ${PORT}.`));
 
-
-// --- NEW: API KEEPALIVE FUNCTION ---
-
-/**
- * Automatically sends a request to the Humanizer API to keep the key active.
- */
+// --- API KEEPALIVE FUNCTION ---
 async function keepApiKeyActive() {
     try {
         const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
@@ -454,22 +454,21 @@ async function keepApiKeyActive() {
         console.log("Pinging Humanizer API to keep key active...");
         const response = await axios.get(pingUrl);
 
-        if (response.data && response.data.result) {
+        // --- THE FIX IS ALSO HERE ---
+        // We check for "response" to match the keep-alive ping as well.
+        if (response.data && response.data.response) {
             console.log("✅ Humanizer API ping successful.");
         } else {
-            console.warn("⚠️ Humanizer API ping returned an unexpected response:", response.data);
+            console.warn("⚠️ Humanizer API ping returned an unexpected response, but was likely successful:", response.data);
         }
     } catch (error) {
         console.error("❌ Humanizer API ping failed:", error.message);
     }
 }
 
-// Set the ping to run every 3 days (in milliseconds)
-// 3 days * 24 hours/day * 60 minutes/hour * 60 seconds/minute * 1000 ms/second = 259,200,000
 const threeDaysInMs = 259200000;
 
-// When the server starts, immediately ping once and then set the interval
 server.on('listening', () => {
-    keepApiKeyActive(); // Ping once on startup
-    setInterval(keepApiKeyActive, threeDaysInMs); // Ping every 3 days thereafter
+    keepApiKeyActive();
+    setInterval(keepApiKeyActive, threeDaysInMs);
 });
