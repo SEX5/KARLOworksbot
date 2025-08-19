@@ -1,11 +1,13 @@
-// index.js (Minimal Bot for Live Testing)
+// index.js (Modified to use secrets.js)
 const express = require('express');
 const axios = require('axios');
 
 // --- CONFIGURATION ---
-// These will be set in the Render environment variables
-const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+// NEW: Load secrets from the secrets.js file
+const secrets = require('./secrets.js');
+const PAGE_ACCESS_TOKEN = secrets.PAGE_ACCESS_TOKEN;
+const VERIFY_TOKEN = secrets.VERIFY_TOKEN;
+// --------------------
 
 // The prompt for the Rapido API
 const RECEIPT_PROMPT = `
@@ -48,7 +50,6 @@ app.post('/webhook', (req, res) => {
  * Main function to handle incoming messages from users.
  */
 async function handleMessage(sender_psid, message) {
-    // If the message has an image attachment, process it.
     if (message.attachments && message.attachments[0].type === 'image') {
         const imageUrl = message.attachments[0].payload.url;
         await sendText(sender_psid, "✅ Image received. Analyzing with Rapido API, please wait...");
@@ -64,7 +65,6 @@ async function handleMessage(sender_psid, message) {
             await sendText(sender_psid, "❌ Analysis Failed. The API could not extract the required information. Please try another image.");
         }
     } else {
-        // If the message is just text, reply with instructions.
         await sendText(sender_psid, "Hello! This is a test bot. Please send a GCash receipt image to test the Rapido API analysis.");
     }
 }
