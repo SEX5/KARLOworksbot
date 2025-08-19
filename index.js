@@ -1,4 +1,4 @@
-// index.js (With AI Chat, Downloaders, Search, Translate & Ghibli Filter)
+// index.js (Final Version with Image & Card Display)
 const express = require('express');
 const axios = require('axios');
 const secrets = require('./secrets.js');
@@ -34,7 +34,7 @@ Just type the number of your choice.`;
     await sendText(psid, menuText);
 }
 
-// --- Main Handlers for Text and Image Messages ---
+// --- Main Message Handlers ---
 async function handleTextMessage(psid, message) {
     const messageText = message.text?.trim();
     const lowerCaseText = messageText?.toLowerCase();
@@ -47,7 +47,6 @@ async function handleTextMessage(psid, message) {
         return;
     }
 
-    // --- State-Based Logic ---
     if (userState?.state) {
         if (userState.state === 'in_chat') {
             handleInChat(psid, lowerCaseText, messageText, userState.model);
@@ -82,7 +81,6 @@ async function handleTextMessage(psid, message) {
         }
     }
 
-    // --- Main Menu Selection Logic ---
     switch (lowerCaseText) {
         case '1': case '2': case '3':
             handleAiSelection(psid, lowerCaseText);
@@ -160,43 +158,68 @@ function handleInChat(psid, lowerCaseText, originalText, model) {
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
     let apiUrl = '', platformName = '';
+
     if (platform === 'fb') { apiUrl = `https://rapido.zetsu.xyz/api/fbdl?url=${encodedUrl}`; platformName = 'Facebook'; }
-    if (platform === 'yt') { apiUrl = `https://rapido.zetsu.xyz/api/ytdl?url=${encodedUrl}`; platformName = 'YouTube'; }
+    if (platform === 'yt') { apiUrl = `https://rapido.zetsu.xyz/api/ytdl-v2?url=${encodedUrl}`; platformName = 'YouTube'; }
     if (platform === 'tik') { apiUrl = `https://rapido.zetsu.xyz/api/tikdl-v2?url=${encodedUrl}`; platformName = 'TikTok'; }
 
-    await sendText(psid, `⏳ Please wait, I'm fetching your ${platformName} video...`);
+    await sendText(psid, `⏳ Please wait, I'm fetching your ${platformName} video... This can take up to a minute.`);
+
     try {
-        const response = await axios.get(apiUrl);
-        if (response.data && response.data.status === true && response.data.response) {
-            const downloadLink = response.data.response.video_url || response.data.response.download_link || response.data.response.url;
-            const title = response.data.response.title || 'Your Video';
+        const response = await axios.get(apiUrl, { timeout: 60000 });
+        console.log(`Full API Response from ${platformName}:`, JSON.stringify(response.data, null, 2));
+
+        const videoData = response.data.response || response.data;
+        
+        if (videoData && (videoData.status !== false) && (videoData.success !== false)) {
+            const title = videoData.title || 'Your Video';
+            await sendText(psid, `✅ Success! Found video:\n*${title}*`);
+            
+            let downloadLink = null;
+            if (platform === 'fb') downloadLink = videoData.url;
+            if (platform === 'yt') downloadLink = videoData.download_url;
+            if (platform === 'tik') downloadLink = videoData.play;
+
             if (downloadLink) {
-                await sendText(psid, `✅ Success!\n\nTitle: ${title}\n\nDownload Link: ${downloadLink}`);
+                await sendVideo(psid, downloadLink, title);
             } else {
-                await sendText(psid, "❌ Sorry, I couldn't find a download link in the response.");
+                await sendText(psid, "❌ Sorry, I couldn't find a valid download link in the API response.");
             }
         } else {
-            await sendText(psid, `❌ Error: ${response.data?.error || response.data?.message || 'The API failed to process the URL.'}`);
+            const errorMessage = response.data?.error || response.data?.message || 'The API failed to process the URL.';
+            await sendText(psid, `❌ Error: ${errorMessage}`);
         }
     } catch (error) {
-        console.error(`Error calling ${platform} downloader API:`, error.message);
-        await sendText(psid, "❌ Sorry, an unexpected error occurred. The link might be invalid or the service is down.");
+        console.error(`Error calling ${platform} downloader API:`, error.response?.data || error.message);
+        await sendText(psid, "❌ Sorry, an unexpected error occurred. The link might be invalid, private, or the service is down.");
     } finally {
         stateManager.clearUserState(psid);
         await sendText(psid, "Type 'menu' to see all options again.");
     }
 }
 
+// --- UPDATED GOOGLE SEARCH HANDLER ---
 async function handleGoogleSearch(psid, query) {
     await sendText(psid, `🔍 Searching Google for "${query}"...`);
     try {
         const response = await axios.get(`https://rapido.zetsu.xyz/api/google?q=${encodeURIComponent(query)}`);
         if (response.data && response.data.results && response.data.results.length > 0) {
-            let searchResults = "Here are the top results:\n\n";
-            response.data.results.slice(0, 4).forEach(res => {
-                searchResults += `Title: ${res.title}\nSnippet: ${res.snippet}\nLink: ${res.link}\n\n`;
-            });
-            await sendText(psid, searchResults);
+            
+            // Build a list of cards to send
+            const elements = response.data.results.slice(0, 5).map(res => ({
+                title: res.title,
+                subtitle: res.snippet,
+                image_url: res.image, // Using the image from the API response
+                default_action: {
+                    type: "web_url",
+                    url: res.link,
+                    webview_height_ratio: "tall",
+                }
+            }));
+
+            await sendText(psid, "Here are the top results I found:");
+            await sendGenericTemplate(psid, elements);
+
         } else {
             await sendText(psid, "Sorry, I couldn't find any results for that search.");
         }
@@ -209,6 +232,7 @@ async function handleGoogleSearch(psid, query) {
     }
 }
 
+// --- UPDATED PINTEREST SEARCH HANDLER ---
 async function handlePinterestSearch(psid, query, count) {
     const numCount = parseInt(count);
     if (isNaN(numCount) || numCount <= 0 || numCount > 10) {
@@ -221,7 +245,8 @@ async function handlePinterestSearch(psid, query, count) {
         if (response.data && response.data.data && response.data.data.length > 0) {
             await sendText(psid, "Here are the images I found:");
             for (const imageUrl of response.data.data) {
-                await sendText(psid, imageUrl);
+                // Now sends the image directly
+                await sendImage(psid, imageUrl);
             }
         } else {
             await sendText(psid, "Sorry, I couldn't find any images for that search.");
@@ -262,7 +287,7 @@ async function handleGhibliRequest(psid, imageUrl) {
         
         if (response.data && response.data.imageUrl) {
             await sendText(psid, "✅ Transformation successful! Here is your image:");
-            await sendText(psid, response.data.imageUrl); 
+            await sendImage(psid, response.data.imageUrl); 
         } else {
              const errorMessage = response.data?.error || "Image transformation failed for an unknown reason.";
              await sendText(psid, `❌ Sorry, something went wrong: ${errorMessage}`);
@@ -276,7 +301,6 @@ async function handleGhibliRequest(psid, imageUrl) {
     }
 }
 
-// --- AI Forwarding Logic ---
 async function forwardToAI(psid, query, model) {
     const encodedQuery = encodeURIComponent(query);
     let apiUrl = '';
@@ -303,7 +327,59 @@ async function sendText(psid, text) {
     try {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
     } catch (error) {
-        console.error("Error sending message:", error.response?.data?.error || error.message);
+        console.error("Error sending text message:", error.response?.data?.error || error.message);
+    }
+}
+
+async function sendImage(psid, imageUrl) {
+    const messageData = {
+        recipient: { id: psid },
+        message: {
+            attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } }
+        }
+    };
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    } catch (error) {
+        console.error("Error sending image message:", error.response?.data?.error || error.message);
+        await sendText(psid, `I couldn't display the image, but here is the link: ${imageUrl}`);
+    }
+}
+
+async function sendVideo(psid, videoUrl, title) {
+    await sendText(psid, "Sending video, please wait...");
+    const messageData = {
+        recipient: { id: psid },
+        message: {
+            attachment: { type: "video", payload: { url: videoUrl, is_reusable: false } }
+        }
+    };
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    } catch (error) {
+        console.error("Error sending video attachment:", error.response?.data?.error || error.message);
+        await sendText(psid, `I couldn't send the video directly (it might be too large). Here is the download link for "*${title}*":\n\n${videoUrl}`);
+    }
+}
+
+// --- NEW HELPER FUNCTION TO SEND RICH CARDS ---
+async function sendGenericTemplate(psid, elements) {
+    const messageData = {
+        recipient: { id: psid },
+        message: {
+            attachment: {
+                type: "template",
+                payload: {
+                    template_type: "generic",
+                    elements: elements
+                }
+            }
+        }
+    };
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    } catch (error) {
+        console.error("Error sending generic template:", error.response?.data?.error || error.message);
     }
 }
 
