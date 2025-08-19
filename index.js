@@ -1,4 +1,4 @@
-// index.js (Corrected Logic)
+// index.js (Updated to call the new fallback function)
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
@@ -39,7 +39,11 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
-        const analysis = await paymentVerifier.sendGeminiRequest(image_b64);
+        
+        // --- THIS IS THE ONLY LINE THAT CHANGES ---
+        // It now calls the new orchestrator function, passing both formats of the image.
+        const analysis = await paymentVerifier.analyzeReceiptWithFallback(imageUrl, image_b64);
+
         if (!analysis) throw new Error("AI analysis returned null.");
         const receiptsDir = path.join(__dirname, 'receipts');
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
