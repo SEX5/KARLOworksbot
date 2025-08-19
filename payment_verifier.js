@@ -1,4 +1,4 @@
-// payment_verifier.js (Node.js Version - Upgraded to Gemini 1.5 Pro)
+// payment_verifier.js (With Rapido as Primary, Gemini as Fallback)
 const axios = require('axios');
 const fs = require('fs/promises'); // Using fs.promises for async file operations
 const sharp = require('sharp');
@@ -44,6 +44,28 @@ Respond in this exact JSON format. Do not include any other text, comments, or m
     "reasoning": "A brief but specific explanation for your decision. Mention any suspicious elements you found (e.g., 'Fonts in amount seem different', 'Reference number is blurry')."
 }
 `; // End of ANALYSIS_PROMPT
+
+
+// --- NEW: PROMPT FOR THE RAPIDO API ---
+const RAPIDO_ANALYSIS_PROMPT = `
+You are a payment verification assistant. Analyze the provided GCash receipt screenshot.
+
+INSTRUCTIONS:
+1. Extract the Reference Number, Amount, and Date.
+2. Check for signs of digital editing like mismatched fonts, blurriness, or misalignment.
+3. Make a final decision: APPROVED (looks real), FLAGGED (suspicious, needs human check), or REJECTED (clearly fake).
+
+Respond ONLY in this exact JSON format. No extra text or markdown.
+{
+    "extracted_info": {
+        "reference_number": "The 13-digit reference number, or 'Not Found'",
+        "amount": "The amount, or 'Not Found'",
+        "date": "The date and time, or 'Not Found'"
+    },
+    "verification_status": "APPROVED/FLAGGED/REJECTED",
+    "reasoning": "A brief explanation for your decision."
+}
+`; // End of RAPIDO_ANALYSIS_PROMPT
 
 
 async function encodeImage(imageBuffer) {
@@ -117,8 +139,81 @@ function createErrorJson(reason) {
     };
 }
 
+
+// --- NEW CODE ADDED: RAPIDO API AS PRIMARY ---
+
+/**
+ * Sends the analysis request to the Rapido API.
+ * @param {string} imageUrl - The public URL of the image.
+ * @returns {Promise<object|null>} The parsed JSON analysis or throws an error on failure.
+ */
+async function sendRapidoRequest(imageUrl) {
+    console.log("Attempting analysis with Primary API (Rapido)...");
+    const encodedPrompt = encodeURIComponent(RAPIDO_ANALYSIS_PROMPT);
+    const encodedImageUrl = encodeURIComponent(imageUrl);
+    const RAPIDO_API_URL = `https://rapido.zetsu.xyz/api/gemini?chat=${encodedPrompt}&imageUrl=${encodedImageUrl}`;
+
+    try {
+        const response = await axios.get(RAPIDO_API_URL, { timeout: 45000 });
+
+        if (!response.data || response.data.status === false || !response.data.response) {
+            throw new Error(`Rapido API responded with an error: ${response.data.error || 'No response data'}`);
+        }
+
+        const rawText = response.data.response;
+        console.log(`Rapido API Raw Response: ${rawText}`);
+        
+        const jsonMatch = rawText.match(/({[\s\S]*})/);
+        if (jsonMatch) {
+            const parsedJson = JSON.parse(jsonMatch[1]);
+            // Validate that the response contains the expected fields before returning
+            if (parsedJson.verification_status && parsedJson.extracted_info) {
+                console.log("Primary API (Rapido) analysis successful.");
+                return parsedJson;
+            }
+        }
+        // If no valid JSON is found, it's considered a failure.
+        throw new Error("Response from Rapido API did not contain a valid JSON object.");
+
+    } catch (error) {
+        console.error("Primary API (Rapido) request failed:", error.message);
+        throw error; // Re-throw the error to allow the orchestrator to catch it and trigger the fallback.
+    }
+}
+
+
+/**
+ * Main analysis function. Tries the Primary (Rapido) API first, then falls back to the Secondary (Gemini) API.
+ * @param {string} imageUrl - The public URL of the image (for Rapido).
+ * @param {string} image_b64 - The base64 encoded image (for Gemini).
+ * @returns {Promise<object|null>} The final analysis object.
+ */
+async function analyzeReceiptWithFallback(imageUrl, image_b64) {
+    try {
+        // Attempt to get a result from the primary API first.
+        const primaryResult = await sendRapidoRequest(imageUrl);
+        return primaryResult;
+    } catch (primaryError) {
+        // If the primary API fails for any reason, log it and proceed to the fallback.
+        console.warn("Primary API (Rapido) failed. Proceeding to Fallback API (Gemini)...");
+        try {
+            // Attempt to get a result from the fallback API.
+            const fallbackResult = await sendGeminiRequest(image_b64);
+            return fallbackResult;
+        } catch (fallbackError) {
+            // If the fallback also fails, log the error and return a final error object.
+            console.error("Fallback API (Gemini) also failed. Analysis could not be completed.");
+            return createErrorJson("Both primary and fallback analysis APIs failed.");
+        }
+    }
+}
+
+
 module.exports = {
     encodeImage,
     sendGeminiRequest,
-    createErrorJson
+    createErrorJson,
+    // --- NEW EXPORTS ADDED ---
+    sendRapidoRequest,
+    analyzeReceiptWithFallback
 };
