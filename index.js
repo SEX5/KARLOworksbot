@@ -1,4 +1,4 @@
-// index.js (With Corrected Humanizer Key)
+// index.js (With Claude 3 Haiku)
 const express = require('express');
 const axios = require('axios');
 const secrets = require('./secrets.js');
@@ -18,6 +18,7 @@ What would you like to do?
 1. ChatGPT-4o
 2. ChatGPT-4.1
 3. Grok
+12. Claude 3 Haiku 🆕
 
 --- Media Tools ---
 4. Facebook Downloader
@@ -86,8 +87,9 @@ async function handleTextMessage(psid, message) {
         }
     }
 
+    // --- Main Menu Selection Logic ---
     switch (lowerCaseText) {
-        case '1': case '2': case '3':
+        case '1': case '2': case '3': case '12': // Added '12' for Claude
             handleAiSelection(psid, lowerCaseText);
             break;
         case '4': case '5': case '6':
@@ -131,11 +133,13 @@ async function handleImageAttachment(psid, imageUrl) {
 
 // --- LOGIC HANDLERS ---
 
+// --- UPDATED AI SELECTION HANDLER ---
 function handleAiSelection(psid, choice) {
     let model, modelName;
     if (choice === '1') { model = 'gpt4o'; modelName = 'ChatGPT-4o'; }
     if (choice === '2') { model = 'gpt4-1'; modelName = 'ChatGPT-4.1'; }
     if (choice === '3') { model = 'grok'; modelName = 'Grok'; }
+    if (choice === '12') { model = 'claude'; modelName = 'Claude 3 Haiku'; } // Added Claude
     
     stateManager.setUserState(psid, 'in_chat', { model });
     sendText(psid, `✅ You are now chatting with ${modelName}. Ask me anything!\n\n(Type 'switch' or 'exit' at any time.)`);
@@ -306,7 +310,6 @@ async function handleGhibliRequest(psid, imageUrl) {
     }
 }
 
-// --- CORRECTED HUMANIZER REQUEST HANDLER ---
 async function handleHumanizerRequest(psid, text) {
     await sendText(psid, "✍️ Humanizing your text... Please wait.");
     try {
@@ -315,11 +318,9 @@ async function handleHumanizerRequest(psid, text) {
         
         const response = await axios.get(apiUrl);
 
-        // --- THE FIX IS HERE ---
-        // We now correctly check for the "response" key instead of "result".
         if (response.data && response.data.response) {
             await sendText(psid, "✅ Here is the humanized version:");
-            await sendText(psid, response.data.response); // Use the correct key here
+            await sendText(psid, response.data.response);
         } else {
             const errorMessage = response.data?.error || "The API returned an unexpected response.";
             await sendText(psid, `❌ Sorry, something went wrong: ${errorMessage}`);
@@ -334,16 +335,26 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
+// --- UPDATED AI FORWARDING LOGIC ---
 async function forwardToAI(psid, query, model) {
-    const encodedQuery = encodeURIComponent(query);
     let apiUrl = '';
+    const encodedQuery = encodeURIComponent(query);
+    const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
+
+    // Build the correct URL based on the selected model
     if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
     if (model === 'gpt4-1') apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1?query=${encodedQuery}&uid=${psid}`;
     if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
+    // Added Claude API endpoint
+    if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
+
     try {
+        console.log(`Forwarding to ${model.toUpperCase()}: ${apiUrl}`);
         const response = await axios.get(apiUrl);
-        if (response.data && response.data.status === true && response.data.response) {
+
+        if (response.data && response.data.response) {
             await sendText(psid, response.data.response);
+            // Update state to keep session alive
             stateManager.setUserState(psid, 'in_chat', { model });
         } else {
             await sendText(psid, `Sorry, an error occurred: ${response.data?.error || 'The AI failed to respond.'}`);
@@ -353,6 +364,7 @@ async function forwardToAI(psid, query, model) {
         await sendText(psid, "Sorry, the AI assistant is currently unavailable.");
     }
 }
+
 
 // --- Helper & Server Functions ---
 async function sendText(psid, text) {
@@ -454,8 +466,6 @@ async function keepApiKeyActive() {
         console.log("Pinging Humanizer API to keep key active...");
         const response = await axios.get(pingUrl);
 
-        // --- THE FIX IS ALSO HERE ---
-        // We check for "response" to match the keep-alive ping as well.
         if (response.data && response.data.response) {
             console.log("✅ Humanizer API ping successful.");
         } else {
