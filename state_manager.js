@@ -1,59 +1,58 @@
-// state_manager.js (Final Version with Conversation Timeout)
+// state_manager.js
+// Handles user conversation states with a built-in timeout.
 
 const userStates = {};
 
-// The timeout limit in milliseconds.
-// 30 minutes * 60 seconds/minute * 1000 milliseconds/second = 1,800,000
-const CONVERSATION_TIMEOUT = 30 * 60 * 1000;
+// 30 minutes in milliseconds (30 * 60 * 1000)
+const CONVERSATION_TIMEOUT = 1800000;
 
 /**
- * Sets the current state for a user and adds a timestamp.
- * This state will automatically expire after the CONVERSATION_TIMEOUT period.
- * @param {string} userId - The unique ID of the user.
- * @param {string} state - The name of the state (e.g., 'awaiting_email').
- * @param {object} data - Any data to store with the state (e.g., { modId: 1 }).
+ * Sets the state for a user, including a timestamp for timeout tracking.
+ * @param {string} psid The user's Page-Scoped ID.
+ * @param {string} state The name of the state (e.g., 'in_chat').
+ * @param {object} data Any data to associate with the state (e.g., { model: 'grok' }).
  */
-const setUserState = (userId, state, data = {}) => {
-  userStates[userId] = {
+const setUserState = (psid, state, data = {}) => {
+  userStates[psid] = {
     state,
     ...data,
-    timestamp: Date.now() // Add the current time to the state
+    timestamp: Date.now() // Record the time of this interaction
   };
+  console.log(`State set for ${psid}:`, userStates[psid]);
 };
 
 /**
- * Retrieves the current state for a user, but only if it has not expired.
- * If the state is older than the timeout, it is automatically deleted.
- * @param {string} userId - The unique ID of the user.
- * @returns {object | null} The user's state object, or null if none exists or it has expired.
+ * Retrieves a user's state, but only if it has not expired.
+ * @param {string} psid The user's Page-Scoped ID.
+ * @returns {object|null} The user's state object, or null if it has timed out or doesn't exist.
  */
-const getUserState = (userId) => {
-  const userState = userStates[userId];
+const getUserState = (psid) => {
+  const userState = userStates[psid];
 
-  // If there's no state at all, return null.
   if (!userState) {
-    return null;
+    return null; // No state exists
   }
 
   const timeElapsed = Date.now() - userState.timestamp;
 
-  // Check if the state has expired.
+  // Check if the state has expired
   if (timeElapsed > CONVERSATION_TIMEOUT) {
-    // The state is too old, so clear it and return null as if it never existed.
-    delete userStates[userId];
+    console.log(`State for ${psid} has expired. Clearing state.`);
+    delete userStates[psid]; // Clear the expired state
     return null;
   }
 
-  // The state is valid and not expired, so return it.
+  // State is valid, return it
   return userState;
 };
 
 /**
- * Manually clears the state for a user, typically after a conversation flow is complete.
- * @param {string} userId - The unique ID of the user.
+ * Manually clears a user's state.
+ * @param {string} psid The user's Page-Scoped ID.
  */
-const clearUserState = (userId) => {
-  delete userStates[userId];
+const clearUserState = (psid) => {
+  console.log(`State cleared for ${psid}.`);
+  delete userStates[psid];
 };
 
 module.exports = {
