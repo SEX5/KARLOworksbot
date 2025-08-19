@@ -1,4 +1,4 @@
-// index.js (Final Version with Image & Card Display)
+// index.js (With Correct Humanizer Key and Auto-Ping)
 const express = require('express');
 const axios = require('axios');
 const secrets = require('./secrets.js');
@@ -29,6 +29,7 @@ What would you like to do?
 --- Utility Tools ---
 8. Google Search
 9. Google Translate
+11. AI Text Humanizer ✍️
 
 Just type the number of your choice.`;
     await sendText(psid, menuText);
@@ -79,6 +80,10 @@ async function handleTextMessage(psid, message) {
             handleTranslateRequest(psid, userState.text, messageText);
             return;
         }
+        if (userState.state === 'awaiting_humanizer_text') {
+            handleHumanizerRequest(psid, messageText);
+            return;
+        }
     }
 
     switch (lowerCaseText) {
@@ -103,6 +108,10 @@ async function handleTextMessage(psid, message) {
         case '10':
             stateManager.setUserState(psid, 'awaiting_ghibli_image');
             await sendText(psid, "✅ Ghibli Filter selected. Please send an image you want to transform!");
+            break;
+        case '11':
+            stateManager.setUserState(psid, 'awaiting_humanizer_text');
+            await sendText(psid, "✅ AI Text Humanizer selected. Please send the AI-generated text you want me to convert.");
             break;
         default:
             await showMainMenu(psid);
@@ -198,18 +207,16 @@ async function handleDownloadRequest(psid, url, platform) {
     }
 }
 
-// --- UPDATED GOOGLE SEARCH HANDLER ---
 async function handleGoogleSearch(psid, query) {
     await sendText(psid, `🔍 Searching Google for "${query}"...`);
     try {
         const response = await axios.get(`https://rapido.zetsu.xyz/api/google?q=${encodeURIComponent(query)}`);
         if (response.data && response.data.results && response.data.results.length > 0) {
             
-            // Build a list of cards to send
             const elements = response.data.results.slice(0, 5).map(res => ({
                 title: res.title,
                 subtitle: res.snippet,
-                image_url: res.image, // Using the image from the API response
+                image_url: res.image,
                 default_action: {
                     type: "web_url",
                     url: res.link,
@@ -232,7 +239,6 @@ async function handleGoogleSearch(psid, query) {
     }
 }
 
-// --- UPDATED PINTEREST SEARCH HANDLER ---
 async function handlePinterestSearch(psid, query, count) {
     const numCount = parseInt(count);
     if (isNaN(numCount) || numCount <= 0 || numCount > 10) {
@@ -245,7 +251,6 @@ async function handlePinterestSearch(psid, query, count) {
         if (response.data && response.data.data && response.data.data.length > 0) {
             await sendText(psid, "Here are the images I found:");
             for (const imageUrl of response.data.data) {
-                // Now sends the image directly
                 await sendImage(psid, imageUrl);
             }
         } else {
@@ -301,6 +306,33 @@ async function handleGhibliRequest(psid, imageUrl) {
     }
 }
 
+// --- UPDATED HUMANIZER REQUEST HANDLER ---
+async function handleHumanizerRequest(psid, text) {
+    await sendText(psid, "✍️ Humanizing your text... Please wait.");
+    try {
+        // --- THIS IS THE CORRECT API KEY ---
+        const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
+        const apiUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=${encodeURIComponent(text)}&apikey=${apiKey}`;
+        
+        const response = await axios.get(apiUrl);
+
+        if (response.data && response.data.result) {
+            await sendText(psid, "✅ Here is the humanized version:");
+            await sendText(psid, response.data.result);
+        } else {
+            const errorMessage = response.data?.error || "The API returned an unexpected response.";
+            await sendText(psid, `❌ Sorry, something went wrong: ${errorMessage}`);
+        }
+
+    } catch (error) {
+        console.error("Humanizer API Error:", error.message);
+        await sendText(psid, "❌ Sorry, the humanizer service is currently unavailable.");
+    } finally {
+        stateManager.clearUserState(psid);
+        await sendText(psid, "Type 'menu' to start a new task.");
+    }
+}
+
 async function forwardToAI(psid, query, model) {
     const encodedQuery = encodeURIComponent(query);
     let apiUrl = '';
@@ -334,9 +366,7 @@ async function sendText(psid, text) {
 async function sendImage(psid, imageUrl) {
     const messageData = {
         recipient: { id: psid },
-        message: {
-            attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } }
-        }
+        message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } }
     };
     try {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
@@ -350,9 +380,7 @@ async function sendVideo(psid, videoUrl, title) {
     await sendText(psid, "Sending video, please wait...");
     const messageData = {
         recipient: { id: psid },
-        message: {
-            attachment: { type: "video", payload: { url: videoUrl, is_reusable: false } }
-        }
+        message: { attachment: { type: "video", payload: { url: videoUrl, is_reusable: false } } }
     };
     try {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
@@ -362,17 +390,13 @@ async function sendVideo(psid, videoUrl, title) {
     }
 }
 
-// --- NEW HELPER FUNCTION TO SEND RICH CARDS ---
 async function sendGenericTemplate(psid, elements) {
     const messageData = {
         recipient: { id: psid },
         message: {
             attachment: {
                 type: "template",
-                payload: {
-                    template_type: "generic",
-                    elements: elements
-                }
+                payload: { template_type: "generic", elements: elements }
             }
         }
     };
@@ -414,4 +438,38 @@ app.post('/webhook', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is listening on port ${PORT}.`));
+const server = app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is listening on port ${PORT}.`));
+
+
+// --- NEW: API KEEPALIVE FUNCTION ---
+
+/**
+ * Automatically sends a request to the Humanizer API to keep the key active.
+ */
+async function keepApiKeyActive() {
+    try {
+        const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
+        const pingUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=Hello&apikey=${apiKey}`;
+        
+        console.log("Pinging Humanizer API to keep key active...");
+        const response = await axios.get(pingUrl);
+
+        if (response.data && response.data.result) {
+            console.log("✅ Humanizer API ping successful.");
+        } else {
+            console.warn("⚠️ Humanizer API ping returned an unexpected response:", response.data);
+        }
+    } catch (error) {
+        console.error("❌ Humanizer API ping failed:", error.message);
+    }
+}
+
+// Set the ping to run every 3 days (in milliseconds)
+// 3 days * 24 hours/day * 60 minutes/hour * 60 seconds/minute * 1000 ms/second = 259,200,000
+const threeDaysInMs = 259200000;
+
+// When the server starts, immediately ping once and then set the interval
+server.on('listening', () => {
+    keepApiKeyActive(); // Ping once on startup
+    setInterval(keepApiKeyActive, threeDaysInMs); // Ping every 3 days thereafter
+});
