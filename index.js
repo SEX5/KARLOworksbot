@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version with Anime Heaven)
+// index.js (Main Controller - Final Version with Spotify Search)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -29,7 +29,8 @@ What would you like to do?
 6. TikTok Downloader
 7. Pinterest Search
 10. Ghibli Image Filter ✨
-15. Anime Heaven Downloader 🆕
+15. Anime Heaven Downloader
+16. Spotify Search 🎵
 
 --- Utility Tools ---
 8. Google Search
@@ -84,13 +85,16 @@ async function handleTextMessage(psid, message) {
             case 'awaiting_humanizer_text':
                 toolHandlers.handleHumanizerRequest(psid, messageText);
                 return;
-            // --- NEW ANIME HEAVEN STATES ---
             case 'awaiting_anime_title':
                 stateManager.setUserState(psid, 'awaiting_anime_episode', { title: messageText });
                 await messengerApi.sendText(psid, "Got it. Now, what episode number would you like?");
                 return;
             case 'awaiting_anime_episode':
                 toolHandlers.handleAnimeHeavenRequest(psid, userState.title, messageText);
+                return;
+            // --- NEW SPOTIFY STATE ---
+            case 'awaiting_spotify_query':
+                toolHandlers.handleSpotifySearch(psid, messageText);
                 return;
         }
     }
@@ -136,10 +140,14 @@ function handleMenuSelection(psid, choice) {
             stateManager.setUserState(psid, 'awaiting_humanizer_text');
             messengerApi.sendText(psid, "✅ AI Text Humanizer selected. Please send the AI-generated text you want me to convert.");
             break;
-        // --- NEW ANIME HEAVEN SELECTION ---
         case '15':
             stateManager.setUserState(psid, 'awaiting_anime_title');
             messengerApi.sendText(psid, "✅ Anime Heaven selected. What is the title of the anime you want to find?");
+            break;
+        // --- NEW SPOTIFY SELECTION ---
+        case '16':
+            stateManager.setUserState(psid, 'awaiting_spotify_query');
+            messengerApi.sendText(psid, "✅ Spotify Search selected. What song or artist are you looking for?");
             break;
         default:
             showMainMenu(psid);
