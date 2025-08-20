@@ -5,7 +5,7 @@ const messengerApi = require('./messenger_api.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 // A safe character limit for APIs that use GET requests in the URL.
-const RAPIDO_AI_CHAR_LIMIT = 1500;
+const RAPIDO_AI_CHAR_LIMIT = 10000;
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
