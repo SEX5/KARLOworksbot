@@ -1,10 +1,10 @@
-// index.js (Main Controller)
+// index.js (Main Controller - Final Version)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
 const toolHandlers = require('./tool_handlers.js');
-const axios = require('axios'); // Needed for the keep-alive ping
+const axios = require('axios');
 
 const { VERIFY_TOKEN } = secrets;
 const app = express();
@@ -38,8 +38,7 @@ Just type the number of your choice.`;
     await messengerApi.sendText(psid, menuText);
 }
 
-// --- Message Handlers (The "Brain") ---
-
+// --- Message Handlers ---
 async function handleTextMessage(psid, message) {
     const messageText = message.text?.trim();
     const lowerCaseText = messageText?.toLowerCase();
@@ -53,7 +52,6 @@ async function handleTextMessage(psid, message) {
     }
 
     if (userState?.state) {
-        // Route to the correct handler based on the user's current state
         switch (userState.state) {
             case 'in_chat':
                 handleInChat(psid, lowerCaseText, messageText, userState.model);
@@ -87,7 +85,6 @@ async function handleTextMessage(psid, message) {
         }
     }
 
-    // If no state, handle as a menu selection
     handleMenuSelection(psid, lowerCaseText);
 }
 
@@ -101,7 +98,6 @@ async function handleImageAttachment(psid, imageUrl) {
 }
 
 // --- Logic Handlers for Conversation Flow ---
-
 function handleMenuSelection(psid, choice) {
     switch (choice) {
         case '1': case '2': case '3': case '12':
@@ -209,11 +205,12 @@ const server = app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is li
 async function keepApiKeyActive() {
     try {
         const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
-        const pingUrl = `https://kaiz-apis.gleeze.com/api/humanizer`;
-        const payload = { q: "Hello", apikey: apiKey };
+        // --- THIS IS THE CORRECTED PING URL ---
+        const pingUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=Hello&apikey=${apiKey}`;
         console.log("Pinging Humanizer API to keep key active...");
-        const response = await axios.post(pingUrl, payload);
-        if (response.data && response.data.response) {
+        // Use GET for the ping
+        const response = await axios.get(pingUrl);
+        if (response.data && (response.data.response || response.data.result)) { // Check for both possible success keys
             console.log("✅ Humanizer API ping successful.");
         } else {
             console.warn("⚠️ Humanizer API ping returned an unexpected response, but was likely successful:", response.data);
