@@ -1,14 +1,16 @@
-// index.js (With Claude 3 Haiku)
+// index.js (Main Controller)
 const express = require('express');
-const axios = require('axios');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
+const messengerApi = require('./messenger_api.js');
+const toolHandlers = require('./tool_handlers.js');
+const axios = require('axios'); // Needed for the keep-alive ping
 
-const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN } = secrets;
+const { VERIFY_TOKEN } = secrets;
 const app = express();
 app.use(express.json());
 
-// --- Main Menu Function ---
+// --- Main Menu ---
 async function showMainMenu(psid) {
     const menuText = `🤖 Multi-Tool Bot 🤖
 
@@ -33,10 +35,11 @@ What would you like to do?
 11. AI Text Humanizer ✍️
 
 Just type the number of your choice.`;
-    await sendText(psid, menuText);
+    await messengerApi.sendText(psid, menuText);
 }
 
-// --- Main Message Handlers ---
+// --- Message Handlers (The "Brain") ---
+
 async function handleTextMessage(psid, message) {
     const messageText = message.text?.trim();
     const lowerCaseText = messageText?.toLowerCase();
@@ -50,99 +53,97 @@ async function handleTextMessage(psid, message) {
     }
 
     if (userState?.state) {
-        if (userState.state === 'in_chat') {
-            handleInChat(psid, lowerCaseText, messageText, userState.model);
-            return;
-        }
-        if (userState.state.startsWith('awaiting_downloader_')) {
-            const platform = userState.state.split('_')[2];
-            handleDownloadRequest(psid, messageText, platform);
-            return;
-        }
-        if (userState.state === 'awaiting_google_query') {
-            handleGoogleSearch(psid, messageText);
-            return;
-        }
-        if (userState.state === 'awaiting_pinterest_query') {
-            stateManager.setUserState(psid, 'awaiting_pinterest_count', { query: messageText });
-            await sendText(psid, "Got it. How many images would you like? (e.g., 5)");
-            return;
-        }
-        if (userState.state === 'awaiting_pinterest_count') {
-            handlePinterestSearch(psid, userState.query, messageText);
-            return;
-        }
-        if (userState.state === 'awaiting_translate_text') {
-            stateManager.setUserState(psid, 'awaiting_translate_lang', { text: messageText });
-            await sendText(psid, "Got it. Now, what language should I translate it to? (e.g., 'en' for English, 'es' for Spanish)");
-            return;
-        }
-        if (userState.state === 'awaiting_translate_lang') {
-            handleTranslateRequest(psid, userState.text, messageText);
-            return;
-        }
-        if (userState.state === 'awaiting_humanizer_text') {
-            handleHumanizerRequest(psid, messageText);
-            return;
+        // Route to the correct handler based on the user's current state
+        switch (userState.state) {
+            case 'in_chat':
+                handleInChat(psid, lowerCaseText, messageText, userState.model);
+                return;
+            case 'awaiting_downloader_fb':
+            case 'awaiting_downloader_yt':
+            case 'awaiting_downloader_tik':
+                const platform = userState.state.split('_')[2];
+                toolHandlers.handleDownloadRequest(psid, messageText, platform);
+                return;
+            case 'awaiting_google_query':
+                toolHandlers.handleGoogleSearch(psid, messageText);
+                return;
+            case 'awaiting_pinterest_query':
+                stateManager.setUserState(psid, 'awaiting_pinterest_count', { query: messageText });
+                await messengerApi.sendText(psid, "Got it. How many images would you like? (e.g., 5)");
+                return;
+            case 'awaiting_pinterest_count':
+                toolHandlers.handlePinterestSearch(psid, userState.query, messageText);
+                return;
+            case 'awaiting_translate_text':
+                stateManager.setUserState(psid, 'awaiting_translate_lang', { text: messageText });
+                await messengerApi.sendText(psid, "Got it. Now, what language should I translate it to? (e.g., 'en' for English)");
+                return;
+            case 'awaiting_translate_lang':
+                toolHandlers.handleTranslateRequest(psid, userState.text, messageText);
+                return;
+            case 'awaiting_humanizer_text':
+                toolHandlers.handleHumanizerRequest(psid, messageText);
+                return;
         }
     }
 
-    // --- Main Menu Selection Logic ---
-    switch (lowerCaseText) {
-        case '1': case '2': case '3': case '12': // Added '12' for Claude
-            handleAiSelection(psid, lowerCaseText);
-            break;
-        case '4': case '5': case '6':
-            handleDownloaderSelection(psid, lowerCaseText);
-            break;
-        case '7':
-            stateManager.setUserState(psid, 'awaiting_pinterest_query');
-            await sendText(psid, "✅ Pinterest Search selected. What do you want to search for?");
-            break;
-        case '8':
-            stateManager.setUserState(psid, 'awaiting_google_query');
-            await sendText(psid, "✅ Google Search selected. What do you want to search for?");
-            break;
-        case '9':
-            stateManager.setUserState(psid, 'awaiting_translate_text');
-            await sendText(psid, "✅ Google Translate selected. What text would you like to translate?");
-            break;
-        case '10':
-            stateManager.setUserState(psid, 'awaiting_ghibli_image');
-            await sendText(psid, "✅ Ghibli Filter selected. Please send an image you want to transform!");
-            break;
-        case '11':
-            stateManager.setUserState(psid, 'awaiting_humanizer_text');
-            await sendText(psid, "✅ AI Text Humanizer selected. Please send the AI-generated text you want me to convert.");
-            break;
-        default:
-            await showMainMenu(psid);
-            break;
-    }
+    // If no state, handle as a menu selection
+    handleMenuSelection(psid, lowerCaseText);
 }
 
 async function handleImageAttachment(psid, imageUrl) {
     const userState = stateManager.getUserState(psid);
     if (userState?.state === 'awaiting_ghibli_image') {
-        await handleGhibliRequest(psid, imageUrl);
+        toolHandlers.handleGhibliRequest(psid, imageUrl);
     } else {
-        await sendText(psid, "I see you've sent an image, but I'm not sure what to do with it. Please select an option from the menu first.");
+        await messengerApi.sendText(psid, "I see you've sent an image, but I'm not sure what to do with it. Please select an option from the menu first.");
     }
 }
 
+// --- Logic Handlers for Conversation Flow ---
 
-// --- LOGIC HANDLERS ---
+function handleMenuSelection(psid, choice) {
+    switch (choice) {
+        case '1': case '2': case '3': case '12':
+            handleAiSelection(psid, choice);
+            break;
+        case '4': case '5': case '6':
+            handleDownloaderSelection(psid, choice);
+            break;
+        case '7':
+            stateManager.setUserState(psid, 'awaiting_pinterest_query');
+            messengerApi.sendText(psid, "✅ Pinterest Search selected. What do you want to search for?");
+            break;
+        case '8':
+            stateManager.setUserState(psid, 'awaiting_google_query');
+            messengerApi.sendText(psid, "✅ Google Search selected. What do you want to search for?");
+            break;
+        case '9':
+            stateManager.setUserState(psid, 'awaiting_translate_text');
+            messengerApi.sendText(psid, "✅ Google Translate selected. What text would you like to translate?");
+            break;
+        case '10':
+            stateManager.setUserState(psid, 'awaiting_ghibli_image');
+            messengerApi.sendText(psid, "✅ Ghibli Filter selected. Please send an image you want to transform!");
+            break;
+        case '11':
+            stateManager.setUserState(psid, 'awaiting_humanizer_text');
+            messengerApi.sendText(psid, "✅ AI Text Humanizer selected. Please send the AI-generated text you want me to convert.");
+            break;
+        default:
+            showMainMenu(psid);
+            break;
+    }
+}
 
-// --- UPDATED AI SELECTION HANDLER ---
 function handleAiSelection(psid, choice) {
     let model, modelName;
     if (choice === '1') { model = 'gpt4o'; modelName = 'ChatGPT-4o'; }
     if (choice === '2') { model = 'gpt4-1'; modelName = 'ChatGPT-4.1'; }
     if (choice === '3') { model = 'grok'; modelName = 'Grok'; }
-    if (choice === '12') { model = 'claude'; modelName = 'Claude 3 Haiku'; } // Added Claude
-    
+    if (choice === '12') { model = 'claude'; modelName = 'Claude 3 Haiku'; }
     stateManager.setUserState(psid, 'in_chat', { model });
-    sendText(psid, `✅ You are now chatting with ${modelName}. Ask me anything!\n\n(Type 'switch' or 'exit' at any time.)`);
+    messengerApi.sendText(psid, `✅ You are now chatting with ${modelName}. Ask me anything!\n\n(Type 'switch' or 'exit' at any time.)`);
 }
 
 function handleDownloaderSelection(psid, choice) {
@@ -150,276 +151,24 @@ function handleDownloaderSelection(psid, choice) {
     if (choice === '4') { state = 'awaiting_downloader_fb'; platformName = 'Facebook'; }
     if (choice === '5') { state = 'awaiting_downloader_yt'; platformName = 'YouTube'; }
     if (choice === '6') { state = 'awaiting_downloader_tik'; platformName = 'TikTok'; }
-
     stateManager.setUserState(psid, state);
-    sendText(psid, `✅ ${platformName} Downloader selected. Please send me the full video URL.`);
+    messengerApi.sendText(psid, `✅ ${platformName} Downloader selected. Please send me the full video URL.`);
 }
 
 function handleInChat(psid, lowerCaseText, originalText, model) {
     if (lowerCaseText === 'switch') {
         stateManager.clearUserState(psid);
-        sendText(psid, "🔄 Switching tasks...");
+        messengerApi.sendText(psid, "🔄 Switching tasks...");
         showMainMenu(psid);
     } else if (lowerCaseText === 'exit') {
         stateManager.clearUserState(psid);
-        sendText(psid, "✅ You have exited the chat session. Type 'menu' to start again.");
+        messengerApi.sendText(psid, "✅ You have exited the chat session. Type 'menu' to start again.");
     } else {
-        forwardToAI(psid, originalText, model);
+        toolHandlers.forwardToAI(psid, originalText, model);
     }
 }
 
-async function handleDownloadRequest(psid, url, platform) {
-    const encodedUrl = encodeURIComponent(url);
-    let apiUrl = '', platformName = '';
-
-    if (platform === 'fb') { apiUrl = `https://rapido.zetsu.xyz/api/fbdl?url=${encodedUrl}`; platformName = 'Facebook'; }
-    if (platform === 'yt') { apiUrl = `https://rapido.zetsu.xyz/api/ytdl-v2?url=${encodedUrl}`; platformName = 'YouTube'; }
-    if (platform === 'tik') { apiUrl = `https://rapido.zetsu.xyz/api/tikdl-v2?url=${encodedUrl}`; platformName = 'TikTok'; }
-
-    await sendText(psid, `⏳ Please wait, I'm fetching your ${platformName} video... This can take up to a minute.`);
-
-    try {
-        const response = await axios.get(apiUrl, { timeout: 60000 });
-        console.log(`Full API Response from ${platformName}:`, JSON.stringify(response.data, null, 2));
-
-        const videoData = response.data.response || response.data;
-        
-        if (videoData && (videoData.status !== false) && (videoData.success !== false)) {
-            const title = videoData.title || 'Your Video';
-            await sendText(psid, `✅ Success! Found video:\n*${title}*`);
-            
-            let downloadLink = null;
-            if (platform === 'fb') downloadLink = videoData.url;
-            if (platform === 'yt') downloadLink = videoData.download_url;
-            if (platform === 'tik') downloadLink = videoData.play;
-
-            if (downloadLink) {
-                await sendVideo(psid, downloadLink, title);
-            } else {
-                await sendText(psid, "❌ Sorry, I couldn't find a valid download link in the API response.");
-            }
-        } else {
-            const errorMessage = response.data?.error || response.data?.message || 'The API failed to process the URL.';
-            await sendText(psid, `❌ Error: ${errorMessage}`);
-        }
-    } catch (error) {
-        console.error(`Error calling ${platform} downloader API:`, error.response?.data || error.message);
-        await sendText(psid, "❌ Sorry, an unexpected error occurred. The link might be invalid, private, or the service is down.");
-    } finally {
-        stateManager.clearUserState(psid);
-        await sendText(psid, "Type 'menu' to see all options again.");
-    }
-}
-
-async function handleGoogleSearch(psid, query) {
-    await sendText(psid, `🔍 Searching Google for "${query}"...`);
-    try {
-        const response = await axios.get(`https://rapido.zetsu.xyz/api/google?q=${encodeURIComponent(query)}`);
-        if (response.data && response.data.results && response.data.results.length > 0) {
-            
-            const elements = response.data.results.slice(0, 5).map(res => ({
-                title: res.title,
-                subtitle: res.snippet,
-                image_url: res.image,
-                default_action: {
-                    type: "web_url",
-                    url: res.link,
-                    webview_height_ratio: "tall",
-                }
-            }));
-
-            await sendText(psid, "Here are the top results I found:");
-            await sendGenericTemplate(psid, elements);
-
-        } else {
-            await sendText(psid, "Sorry, I couldn't find any results for that search.");
-        }
-    } catch (error) {
-        console.error("Google Search API Error:", error.message);
-        await sendText(psid, "Sorry, the search service is currently unavailable.");
-    } finally {
-        stateManager.clearUserState(psid);
-        await sendText(psid, "Type 'menu' to start a new task.");
-    }
-}
-
-async function handlePinterestSearch(psid, query, count) {
-    const numCount = parseInt(count);
-    if (isNaN(numCount) || numCount <= 0 || numCount > 10) {
-        await sendText(psid, "Please enter a valid number between 1 and 10.");
-        return;
-    }
-    await sendText(psid, `🎨 Searching Pinterest for ${numCount} image(s) of "${query}"...`);
-    try {
-        const response = await axios.get(`https://rapido.zetsu.xyz/api/pin?search=${encodeURIComponent(query)}&count=${numCount}`);
-        if (response.data && response.data.data && response.data.data.length > 0) {
-            await sendText(psid, "Here are the images I found:");
-            for (const imageUrl of response.data.data) {
-                await sendImage(psid, imageUrl);
-            }
-        } else {
-            await sendText(psid, "Sorry, I couldn't find any images for that search.");
-        }
-    } catch (error) {
-        console.error("Pinterest API Error:", error.message);
-        await sendText(psid, "Sorry, the Pinterest search service is currently unavailable.");
-    } finally {
-        stateManager.clearUserState(psid);
-        await sendText(psid, "Type 'menu' to start a new task.");
-    }
-}
-
-async function handleTranslateRequest(psid, text, lang) {
-    await sendText(psid, `🌐 Translating to '${lang}'...`);
-    try {
-        const response = await axios.get(`https://rapido.zetsu.xyz/api/translate?text=${encodeURIComponent(text)}&lang=${encodeURIComponent(lang)}`);
-        if (response.data && response.data.translated) {
-            const result = `Original: ${response.data.original}\n\nTranslated: ${response.data.translated}`;
-            await sendText(psid, result);
-        } else {
-            await sendText(psid, "Sorry, I couldn't translate that. The language code might be incorrect.");
-        }
-    } catch (error) {
-        console.error("Translate API Error:", error.message);
-        await sendText(psid, "Sorry, the translation service is currently unavailable.");
-    } finally {
-        stateManager.clearUserState(psid);
-        await sendText(psid, "Type 'menu' to start a new task.");
-    }
-}
-
-async function handleGhibliRequest(psid, imageUrl) {
-    await sendText(psid, "🎨 Applying Ghibli filter... This might take a moment!");
-    try {
-        const encodedImageUrl = encodeURIComponent(imageUrl);
-        const response = await axios.get(`https://rapido.zetsu.xyz/api/ghibli?imageUrl=${encodedImageUrl}`);
-        
-        if (response.data && response.data.imageUrl) {
-            await sendText(psid, "✅ Transformation successful! Here is your image:");
-            await sendImage(psid, response.data.imageUrl); 
-        } else {
-             const errorMessage = response.data?.error || "Image transformation failed for an unknown reason.";
-             await sendText(psid, `❌ Sorry, something went wrong: ${errorMessage}`);
-        }
-    } catch (error) {
-        console.error("Ghibli API Error:", error.message);
-        await sendText(psid, "❌ Sorry, the image transformation service is currently unavailable.");
-    } finally {
-        stateManager.clearUserState(psid);
-        await sendText(psid, "Type 'menu' to start a new task.");
-    }
-}
-
-async function handleHumanizerRequest(psid, text) {
-    await sendText(psid, "✍️ Humanizing your text... Please wait.");
-    try {
-        const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
-        const apiUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=${encodeURIComponent(text)}&apikey=${apiKey}`;
-        
-        const response = await axios.get(apiUrl);
-
-        if (response.data && response.data.response) {
-            await sendText(psid, "✅ Here is the humanized version:");
-            await sendText(psid, response.data.response);
-        } else {
-            const errorMessage = response.data?.error || "The API returned an unexpected response.";
-            await sendText(psid, `❌ Sorry, something went wrong: ${errorMessage}`);
-        }
-
-    } catch (error) {
-        console.error("Humanizer API Error:", error.message);
-        await sendText(psid, "❌ Sorry, the humanizer service is currently unavailable.");
-    } finally {
-        stateManager.clearUserState(psid);
-        await sendText(psid, "Type 'menu' to start a new task.");
-    }
-}
-
-// --- UPDATED AI FORWARDING LOGIC ---
-async function forwardToAI(psid, query, model) {
-    let apiUrl = '';
-    const encodedQuery = encodeURIComponent(query);
-    const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
-
-    // Build the correct URL based on the selected model
-    if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
-    if (model === 'gpt4-1') apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1?query=${encodedQuery}&uid=${psid}`;
-    if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
-    // Added Claude API endpoint
-    if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
-
-    try {
-        console.log(`Forwarding to ${model.toUpperCase()}: ${apiUrl}`);
-        const response = await axios.get(apiUrl);
-
-        if (response.data && response.data.response) {
-            await sendText(psid, response.data.response);
-            // Update state to keep session alive
-            stateManager.setUserState(psid, 'in_chat', { model });
-        } else {
-            await sendText(psid, `Sorry, an error occurred: ${response.data?.error || 'The AI failed to respond.'}`);
-        }
-    } catch (error) {
-        console.error(`Error calling ${model} API:`, error.message);
-        await sendText(psid, "Sorry, the AI assistant is currently unavailable.");
-    }
-}
-
-
-// --- Helper & Server Functions ---
-async function sendText(psid, text) {
-    const messageData = { recipient: { id: psid }, message: { text: text } };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending text message:", error.response?.data?.error || error.message);
-    }
-}
-
-async function sendImage(psid, imageUrl) {
-    const messageData = {
-        recipient: { id: psid },
-        message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } }
-    };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending image message:", error.response?.data?.error || error.message);
-        await sendText(psid, `I couldn't display the image, but here is the link: ${imageUrl}`);
-    }
-}
-
-async function sendVideo(psid, videoUrl, title) {
-    await sendText(psid, "Sending video, please wait...");
-    const messageData = {
-        recipient: { id: psid },
-        message: { attachment: { type: "video", payload: { url: videoUrl, is_reusable: false } } }
-    };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending video attachment:", error.response?.data?.error || error.message);
-        await sendText(psid, `I couldn't send the video directly (it might be too large). Here is the download link for "*${title}*":\n\n${videoUrl}`);
-    }
-}
-
-async function sendGenericTemplate(psid, elements) {
-    const messageData = {
-        recipient: { id: psid },
-        message: {
-            attachment: {
-                type: "template",
-                payload: { template_type: "generic", elements: elements }
-            }
-        }
-    };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending generic template:", error.response?.data?.error || error.message);
-    }
-}
-
+// --- Server and Webhook Setup ---
 app.get('/', (req, res) => {
     res.status(200).send('✅ Multi-Tool Bot is online and healthy.');
 });
@@ -441,8 +190,7 @@ app.post('/webhook', (req, res) => {
             if (event?.sender?.id && event.message) {
                 if (event.message.text) {
                     handleTextMessage(event.sender.id, event.message);
-                } 
-                else if (event.message.attachments?.[0]?.type === 'image') {
+                } else if (event.message.attachments?.[0]?.type === 'image') {
                     const imageUrl = event.message.attachments[0].payload.url;
                     handleImageAttachment(event.sender.id, imageUrl);
                 }
@@ -461,11 +209,10 @@ const server = app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is li
 async function keepApiKeyActive() {
     try {
         const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
-        const pingUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=Hello&apikey=${apiKey}`;
-        
+        const pingUrl = `https://kaiz-apis.gleeze.com/api/humanizer`;
+        const payload = { q: "Hello", apikey: apiKey };
         console.log("Pinging Humanizer API to keep key active...");
-        const response = await axios.get(pingUrl);
-
+        const response = await axios.post(pingUrl, payload);
         if (response.data && response.data.response) {
             console.log("✅ Humanizer API ping successful.");
         } else {
@@ -477,7 +224,6 @@ async function keepApiKeyActive() {
 }
 
 const threeDaysInMs = 259200000;
-
 server.on('listening', () => {
     keepApiKeyActive();
     setInterval(keepApiKeyActive, threeDaysInMs);
