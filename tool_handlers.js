@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with Gemini Pro)
+// tool_handlers.js (Final Version with Kaiz AI)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -150,9 +150,8 @@ async function handleHumanizerRequest(psid, text) {
 }
 
 // --- UPDATED AI FORWARDING FUNCTION ---
-async function forwardToAI(psid, query, model, roleplay = '') {
-    // Check for long messages ONLY on the APIs that have this limitation.
-    if (['grok', 'claude', 'o3mini', 'geminipro'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
+async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '') {
+    if (['grok', 'claude', 'o3mini', 'geminipro', 'kaiz'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
         await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model. Please try a shorter message or switch to Advanced GPT-4o.`);
         return;
     }
@@ -170,8 +169,14 @@ async function forwardToAI(psid, query, model, roleplay = '') {
             if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
             if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
             if (model === 'chatgot') apiUrl = `https://kaiz-apis.gleeze.com/api/chatgot-io?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
-            // --- NEW: Added Gemini Pro ---
             if (model === 'geminipro') apiUrl = `https://kaiz-apis.gleeze.com/api/gemini-pro?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
+            // --- NEW: Kaiz AI with Image Support ---
+            if (model === 'kaiz') {
+                apiUrl = `https://kaiz-apis.gleeze.com/api/kaiz-ai?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
+                if (imageUrl) {
+                    apiUrl += `&image_url=${encodeURIComponent(imageUrl)}`;
+                }
+            }
             
             response = await axios.get(apiUrl, { timeout: 60000 });
         }
