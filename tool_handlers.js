@@ -1,11 +1,10 @@
-// tool_handlers.js (Final Version with Anime Heaven)
+// tool_handlers.js (Final Version with Spotify Search)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
-// A safe character limit for APIs that put the query in the URL.
-const URL_CHARACTER_LIMIT = 10000;
+const URL_CHARACTER_LIMIT = 1800;
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -153,9 +152,7 @@ async function forwardToAI(psid, query, model) {
         await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters). Please try a shorter message.`);
         return;
     }
-
     let apiUrl;
-    
     try {
         const encodedQuery = encodeURIComponent(query);
         if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
@@ -164,9 +161,7 @@ async function forwardToAI(psid, query, model) {
         if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
         if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
 
-        console.log(`Forwarding to ${model.toUpperCase()} via GET: ${apiUrl}`);
         const response = await axios.get(apiUrl, { timeout: 60000 });
-
         if (response.data && response.data.response) {
             await messengerApi.sendText(psid, response.data.response);
             stateManager.setUserState(psid, 'in_chat', { model });
@@ -174,41 +169,30 @@ async function forwardToAI(psid, query, model) {
             await messengerApi.sendText(psid, `Sorry, an error occurred: ${response.data?.error || 'The AI failed to respond.'}`);
         }
     } catch (error) {
-        console.error(`Error calling ${model} API:`, error.response?.data || error.message);
         await messengerApi.sendText(psid, "Sorry, the AI assistant is currently unavailable or the request timed out.");
     }
 }
 
-// --- NEW ANIME HEAVEN HANDLER ADDED HERE ---
 async function handleAnimeHeavenRequest(psid, title, episode) {
     await messengerApi.sendText(psid, `Searching for "${title}" Episode ${episode}...`);
     try {
         const apiUrl = `https://kaiz-apis.gleeze.com/api/animeheaven?title=${encodeURIComponent(title)}&episode=${encodeURIComponent(episode)}&apikey=${kaizApiKey}`;
         const response = await axios.get(apiUrl, { timeout: 60000 });
-
         if (response.data && response.data.response) {
             const animeData = response.data.response;
             const episodeInfo = animeData.episodeList?.find(ep => ep.episode === episode);
-
             if (episodeInfo && episodeInfo.download_url) {
-                // First, send the details in a nice format
-                let details = `✅ Found it!\n\n`;
-                details += `*Title:* ${animeData.title}\n`;
-                details += `*Description:* ${animeData.description}\n`;
-                details += `*Score:* ${animeData.score}`;
+                let details = `✅ Found it!\n\n*Title:* ${animeData.title}\n*Description:* ${animeData.description}\n*Score:* ${animeData.score}`;
                 await messengerApi.sendImage(psid, animeData.thumbnail);
                 await messengerApi.sendText(psid, details);
-
-                // Now, send the video
                 await messengerApi.sendVideo(psid, episodeInfo.download_url, `${animeData.title} - Episode ${episode}`);
             } else {
-                await messengerApi.sendText(psid, `❌ I found the anime "${animeData.title}", but I couldn't find Episode ${episode}. Please check the episode number.`);
+                await messengerApi.sendText(psid, `❌ I found the anime "${animeData.title}", but I couldn't find Episode ${episode}.`);
             }
         } else {
-            await messengerApi.sendText(psid, `❌ Sorry, I couldn't find any anime with that title. Please check the spelling.`);
+            await messengerApi.sendText(psid, `❌ Sorry, I couldn't find any anime with that title.`);
         }
     } catch (error) {
-        console.error("Anime Heaven API Error:", error.response?.data || error.message);
         await messengerApi.sendText(psid, "❌ Sorry, the Anime Heaven service is currently unavailable.");
     } finally {
         stateManager.clearUserState(psid);
@@ -216,6 +200,50 @@ async function handleAnimeHeavenRequest(psid, title, episode) {
     }
 }
 
+// --- NEW SPOTIFY HANDLER ADDED HERE ---
+async function handleSpotifySearch(psid, query) {
+    await messengerApi.sendText(psid, `🎵 Searching Spotify for "${query}"...`);
+    try {
+        const spResponse = await axios.get(`https://rapido.zetsu.xyz/api/sp?query=${encodeURIComponent(query)}`);
+        
+        // The API returns an object with keys "0", "1", "2", etc.
+        const results = Object.values(spResponse.data).filter(item => typeof item === 'object');
+
+        if (results.length > 0) {
+            await messengerApi.sendText(psid, "Here are the top tracks I found:");
+            
+            // Build a list of cards to send
+            const elements = [];
+            // Limit to the top 5 results to avoid hitting message limits
+            for (const track of results.slice(0, 5)) {
+                // Step 2: Search Pinterest for the cover art
+                const artQuery = `${track.name} ${track.artist} album art`;
+                const pinResponse = await axios.get(`https://rapido.zetsu.xyz/api/pin?search=${encodeURIComponent(artQuery)}&count=1`);
+                const imageUrl = pinResponse.data?.data?.[0] || 'https://i.imgur.com/8Q0m4p8.png'; // Fallback image
+
+                elements.push({
+                    title: track.name,
+                    subtitle: `by ${track.artist}`,
+                    image_url: imageUrl,
+                    default_action: {
+                        type: "web_url",
+                        url: track.url, // This link opens the song in Spotify
+                        webview_height_ratio: "tall",
+                    }
+                });
+            }
+            await messengerApi.sendGenericTemplate(psid, elements);
+        } else {
+            await messengerApi.sendText(psid, "Sorry, I couldn't find any tracks for that search.");
+        }
+    } catch (error) {
+        console.error("Spotify Search API Error:", error.message);
+        await messengerApi.sendText(psid, "Sorry, the Spotify search service is currently unavailable.");
+    } finally {
+        stateManager.clearUserState(psid);
+        await messengerApi.sendText(psid, "Type 'menu' to start a new task.");
+    }
+}
 
 module.exports = {
     handleDownloadRequest,
@@ -225,5 +253,6 @@ module.exports = {
     handleGhibliRequest,
     handleHumanizerRequest,
     forwardToAI,
-    handleAnimeHeavenRequest // --- EXPORT THE NEW FUNCTION ---
+    handleAnimeHeavenRequest,
+    handleSpotifySearch // --- EXPORT THE NEW FUNCTION ---
 };
