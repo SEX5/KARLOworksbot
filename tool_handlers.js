@@ -1,9 +1,11 @@
-// tool_handlers.js (Final Version with Spotify Search)
+// tool_handlers.js (Final Version with New GPT-4o)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
+const secrets = require('./secrets.js'); // Import secrets to get the new key
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
+const hajiApiKey = secrets.HAJI_API_KEY; // Get the new key
 const URL_CHARACTER_LIMIT = 1800;
 
 async function handleDownloadRequest(psid, url, platform) {
@@ -147,28 +149,35 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
-async function forwardToAI(psid, query, model) {
-    if (['gpt4o', 'gpt4-1', 'grok', 'claude', 'o3mini'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
+async function forwardToAI(psid, query, model, roleplay = '') {
+    if (['grok', 'claude', 'o3mini'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
         await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters). Please try a shorter message.`);
         return;
     }
-    let apiUrl;
+    let apiUrl, response;
+    const encodedQuery = encodeURIComponent(query);
     try {
-        const encodedQuery = encodeURIComponent(query);
-        if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
-        if (model === 'gpt4-1') apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1?query=${encodedQuery}&uid=${psid}`;
-        if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
-        if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
-        if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
-
-        const response = await axios.get(apiUrl, { timeout: 60000 });
-        if (response.data && response.data.response) {
-            await messengerApi.sendText(psid, response.data.response);
-            stateManager.setUserState(psid, 'in_chat', { model });
+        if (model === 'gpt4o_advanced') {
+            const encodedRoleplay = encodeURIComponent(roleplay);
+            apiUrl = `https://haji-mix-api.gleeze.com/api/gpt4o?ask=${encodedQuery}&uid=${psid}&roleplay=${encodedRoleplay}&api_key=${hajiApiKey}`;
+            console.log(`Forwarding to Advanced GPT-4o via GET: ${apiUrl}`);
+            response = await axios.get(apiUrl, { timeout: 60000 });
+        } else {
+            if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
+            if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
+            if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
+            console.log(`Forwarding to ${model.toUpperCase()} via GET: ${apiUrl}`);
+            response = await axios.get(apiUrl, { timeout: 60000 });
+        }
+        const reply = response.data?.answer || response.data?.response;
+        if (reply) {
+            await messengerApi.sendText(psid, reply);
+            stateManager.setUserState(psid, 'in_chat', { model, roleplay });
         } else {
             await messengerApi.sendText(psid, `Sorry, an error occurred: ${response.data?.error || 'The AI failed to respond.'}`);
         }
     } catch (error) {
+        console.error(`Error calling ${model} API:`, error.response?.data || error.message);
         await messengerApi.sendText(psid, "Sorry, the AI assistant is currently unavailable or the request timed out.");
     }
 }
@@ -200,36 +209,23 @@ async function handleAnimeHeavenRequest(psid, title, episode) {
     }
 }
 
-// --- NEW SPOTIFY HANDLER ADDED HERE ---
 async function handleSpotifySearch(psid, query) {
     await messengerApi.sendText(psid, `🎵 Searching Spotify for "${query}"...`);
     try {
         const spResponse = await axios.get(`https://rapido.zetsu.xyz/api/sp?query=${encodeURIComponent(query)}`);
-        
-        // The API returns an object with keys "0", "1", "2", etc.
         const results = Object.values(spResponse.data).filter(item => typeof item === 'object');
-
         if (results.length > 0) {
             await messengerApi.sendText(psid, "Here are the top tracks I found:");
-            
-            // Build a list of cards to send
             const elements = [];
-            // Limit to the top 5 results to avoid hitting message limits
             for (const track of results.slice(0, 5)) {
-                // Step 2: Search Pinterest for the cover art
                 const artQuery = `${track.name} ${track.artist} album art`;
                 const pinResponse = await axios.get(`https://rapido.zetsu.xyz/api/pin?search=${encodeURIComponent(artQuery)}&count=1`);
-                const imageUrl = pinResponse.data?.data?.[0] || 'https://i.imgur.com/8Q0m4p8.png'; // Fallback image
-
+                const imageUrl = pinResponse.data?.data?.[0] || 'https://i.imgur.com/8Q0m4p8.png';
                 elements.push({
                     title: track.name,
                     subtitle: `by ${track.artist}`,
                     image_url: imageUrl,
-                    default_action: {
-                        type: "web_url",
-                        url: track.url, // This link opens the song in Spotify
-                        webview_height_ratio: "tall",
-                    }
+                    default_action: { type: "web_url", url: track.url, webview_height_ratio: "tall" }
                 });
             }
             await messengerApi.sendGenericTemplate(psid, elements);
@@ -237,7 +233,6 @@ async function handleSpotifySearch(psid, query) {
             await messengerApi.sendText(psid, "Sorry, I couldn't find any tracks for that search.");
         }
     } catch (error) {
-        console.error("Spotify Search API Error:", error.message);
         await messengerApi.sendText(psid, "Sorry, the Spotify search service is currently unavailable.");
     } finally {
         stateManager.clearUserState(psid);
@@ -254,5 +249,5 @@ module.exports = {
     handleHumanizerRequest,
     forwardToAI,
     handleAnimeHeavenRequest,
-    handleSpotifySearch // --- EXPORT THE NEW FUNCTION ---
+    handleSpotifySearch
 };
