@@ -1,11 +1,11 @@
-// tool_handlers.js (Final Version with Correct GET Method for All AIs)
+// tool_handlers.js (Final Version with O3 Mini)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 // A safe character limit for APIs that put the query in the URL.
-const URL_CHARACTER_LIMIT = 10000;
+const URL_CHARACTER_LIMIT = 1800;
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -148,9 +148,8 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
-// --- THIS IS THE FINAL AI FORWARDING FUNCTION ---
+// --- THIS IS THE UPDATED AI FORWARDING FUNCTION ---
 async function forwardToAI(psid, query, model) {
-    // Check if the message is too long for ANY of the GET-based APIs.
     if (query.length > URL_CHARACTER_LIMIT) {
         await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters). Please try a shorter message.`);
         return;
@@ -161,11 +160,13 @@ async function forwardToAI(psid, query, model) {
     try {
         const encodedQuery = encodeURIComponent(query);
         
-        // All these APIs use the GET method with the query in the URL.
+        // All these APIs use the GET method.
         if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
         if (model === 'gpt4-1') apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1?query=${encodedQuery}&uid=${psid}`;
         if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
         if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
+        // --- NEW: Added O3 Mini ---
+        if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
 
         console.log(`Forwarding to ${model.toUpperCase()} via GET: ${apiUrl}`);
         const response = await axios.get(apiUrl, { timeout: 60000 });
