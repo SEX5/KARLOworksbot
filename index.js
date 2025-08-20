@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version with Spotify Search)
+// index.js (Main Controller - Final Version with Advanced GPT-4o)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -10,32 +10,31 @@ const { VERIFY_TOKEN } = secrets;
 const app = express();
 app.use(express.json());
 
-// --- Main Menu ---
+// --- UPDATED Main Menu ---
 async function showMainMenu(psid) {
     const menuText = `🤖 Multi-Tool Bot 🤖
 
 What would you like to do?
 
 --- AI Models ---
-1. ChatGPT-4o
-2. ChatGPT-4.1
-3. Grok
-12. Claude 3 Haiku
-14. O3 Mini
+1. GPT-4o (Advanced 🚀)
+2. Grok
+3. Claude 3 Haiku
+4. O3 Mini
 
 --- Media Tools ---
-4. Facebook Downloader
-5. YouTube Downloader
-6. TikTok Downloader
-7. Pinterest Search
-10. Ghibli Image Filter ✨
-15. Anime Heaven Downloader
-16. Spotify Search 🎵
+5. Facebook Downloader
+6. YouTube Downloader
+7. TikTok Downloader
+8. Pinterest Search
+9. Ghibli Image Filter ✨
+10. Anime Heaven Downloader
+11. Spotify Search 🎵
 
 --- Utility Tools ---
-8. Google Search
-9. Google Translate
-11. AI Text Humanizer ✍️
+12. Google Search
+13. Google Translate
+14. AI Text Humanizer ✍️
 
 Just type the number of your choice.`;
     await messengerApi.sendText(psid, menuText);
@@ -57,7 +56,10 @@ async function handleTextMessage(psid, message) {
     if (userState?.state) {
         switch (userState.state) {
             case 'in_chat':
-                handleInChat(psid, lowerCaseText, messageText, userState.model);
+                handleInChat(psid, lowerCaseText, messageText, userState.model, userState.roleplay);
+                return;
+            case 'awaiting_gpt4o_roleplay':
+                handleGpt4oRoleplay(psid, messageText);
                 return;
             case 'awaiting_downloader_fb':
             case 'awaiting_downloader_yt':
@@ -92,7 +94,6 @@ async function handleTextMessage(psid, message) {
             case 'awaiting_anime_episode':
                 toolHandlers.handleAnimeHeavenRequest(psid, userState.title, messageText);
                 return;
-            // --- NEW SPOTIFY STATE ---
             case 'awaiting_spotify_query':
                 toolHandlers.handleSpotifySearch(psid, messageText);
                 return;
@@ -114,40 +115,43 @@ async function handleImageAttachment(psid, imageUrl) {
 // --- Logic Handlers for Conversation Flow ---
 function handleMenuSelection(psid, choice) {
     switch (choice) {
-        case '1': case '2': case '3': case '12': case '14':
-            handleAiSelection(psid, choice);
+        case '1':
+            stateManager.setUserState(psid, 'awaiting_gpt4o_roleplay');
+            messengerApi.sendText(psid, "🚀 Advanced GPT-4o selected.\nYou can set a custom roleplay for the AI (e.g., 'You are a helpful pirate'). Or, type 'skip' to use the default.");
             break;
-        case '4': case '5': case '6':
-            handleDownloaderSelection(psid, choice);
-            break;
-        case '7':
+        case '2': handleAiSelection(psid, 'grok'); break;
+        case '3': handleAiSelection(psid, 'claude'); break;
+        case '4': handleAiSelection(psid, 'o3mini'); break;
+        case '5': handleDownloaderSelection(psid, 'fb'); break;
+        case '6': handleDownloaderSelection(psid, 'yt'); break;
+        case '7': handleDownloaderSelection(psid, 'tik'); break;
+        case '8':
             stateManager.setUserState(psid, 'awaiting_pinterest_query');
             messengerApi.sendText(psid, "✅ Pinterest Search selected. What do you want to search for?");
             break;
-        case '8':
-            stateManager.setUserState(psid, 'awaiting_google_query');
-            messengerApi.sendText(psid, "✅ Google Search selected. What do you want to search for?");
-            break;
         case '9':
-            stateManager.setUserState(psid, 'awaiting_translate_text');
-            messengerApi.sendText(psid, "✅ Google Translate selected. What text would you like to translate?");
-            break;
-        case '10':
             stateManager.setUserState(psid, 'awaiting_ghibli_image');
             messengerApi.sendText(psid, "✅ Ghibli Filter selected. Please send an image you want to transform!");
             break;
-        case '11':
-            stateManager.setUserState(psid, 'awaiting_humanizer_text');
-            messengerApi.sendText(psid, "✅ AI Text Humanizer selected. Please send the AI-generated text you want me to convert.");
-            break;
-        case '15':
+        case '10':
             stateManager.setUserState(psid, 'awaiting_anime_title');
-            messengerApi.sendText(psid, "✅ Anime Heaven selected. What is the title of the anime you want to find?");
+            messengerApi.sendText(psid, "✅ Anime Heaven selected. What is the title of the anime?");
             break;
-        // --- NEW SPOTIFY SELECTION ---
-        case '16':
+        case '11':
             stateManager.setUserState(psid, 'awaiting_spotify_query');
-            messengerApi.sendText(psid, "✅ Spotify Search selected. What song or artist are you looking for?");
+            messengerApi.sendText(psid, "✅ Spotify Search selected. What song or artist?");
+            break;
+        case '12':
+            stateManager.setUserState(psid, 'awaiting_google_query');
+            messengerApi.sendText(psid, "✅ Google Search selected. What do you want to search for?");
+            break;
+        case '13':
+            stateManager.setUserState(psid, 'awaiting_translate_text');
+            messengerApi.sendText(psid, "✅ Google Translate selected. What text would you like to translate?");
+            break;
+        case '14':
+            stateManager.setUserState(psid, 'awaiting_humanizer_text');
+            messengerApi.sendText(psid, "✅ AI Text Humanizer selected. Please send the text to convert.");
             break;
         default:
             showMainMenu(psid);
@@ -155,27 +159,36 @@ function handleMenuSelection(psid, choice) {
     }
 }
 
-function handleAiSelection(psid, choice) {
-    let model, modelName;
-    if (choice === '1') { model = 'gpt4o'; modelName = 'ChatGPT-4o'; }
-    if (choice === '2') { model = 'gpt4-1'; modelName = 'ChatGPT-4.1'; }
-    if (choice === '3') { model = 'grok'; modelName = 'Grok'; }
-    if (choice === '12') { model = 'claude'; modelName = 'Claude 3 Haiku'; }
-    if (choice === '14') { model = 'o3mini'; modelName = 'O3 Mini'; }
+function handleGpt4oRoleplay(psid, text) {
+    const roleplay = text.toLowerCase() === 'skip' ? '' : text;
+    stateManager.setUserState(psid, 'in_chat', { model: 'gpt4o_advanced', roleplay: roleplay });
+    let confirmation = "✅ You are now chatting with Advanced GPT-4o.";
+    if (roleplay) {
+        confirmation += `\n*Roleplay set:* "${roleplay}"`;
+    }
+    confirmation += `\n\nAsk me anything! This AI remembers your conversation.\n(Type 'switch' or 'exit' at any time.)`;
+    messengerApi.sendText(psid, confirmation);
+}
+
+function handleAiSelection(psid, model) {
+    let modelName;
+    if (model === 'grok') modelName = 'Grok';
+    if (model === 'claude') modelName = 'Claude 3 Haiku';
+    if (model === 'o3mini') modelName = 'O3 Mini';
     stateManager.setUserState(psid, 'in_chat', { model });
     messengerApi.sendText(psid, `✅ You are now chatting with ${modelName}. Ask me anything!\n\n(Type 'switch' or 'exit' at any time.)`);
 }
 
-function handleDownloaderSelection(psid, choice) {
+function handleDownloaderSelection(psid, platform) {
     let state, platformName;
-    if (choice === '4') { state = 'awaiting_downloader_fb'; platformName = 'Facebook'; }
-    if (choice === '5') { state = 'awaiting_downloader_yt'; platformName = 'YouTube'; }
-    if (choice === '6') { state = 'awaiting_downloader_tik'; platformName = 'TikTok'; }
+    if (platform === 'fb') { state = 'awaiting_downloader_fb'; platformName = 'Facebook'; }
+    if (platform === 'yt') { state = 'awaiting_downloader_yt'; platformName = 'YouTube'; }
+    if (platform === 'tik') { state = 'awaiting_downloader_tik'; platformName = 'TikTok'; }
     stateManager.setUserState(psid, state);
     messengerApi.sendText(psid, `✅ ${platformName} Downloader selected. Please send me the full video URL.`);
 }
 
-function handleInChat(psid, lowerCaseText, originalText, model) {
+function handleInChat(psid, lowerCaseText, originalText, model, roleplay) {
     if (lowerCaseText === 'switch') {
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "🔄 Switching tasks...");
@@ -184,15 +197,12 @@ function handleInChat(psid, lowerCaseText, originalText, model) {
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "✅ You have exited the chat session. Type 'menu' to start again.");
     } else {
-        toolHandlers.forwardToAI(psid, originalText, model);
+        toolHandlers.forwardToAI(psid, originalText, model, roleplay);
     }
 }
 
 // --- Server and Webhook Setup ---
-app.get('/', (req, res) => {
-    res.status(200).send('✅ Multi-Tool Bot is online and healthy.');
-});
-
+app.get('/', (req, res) => res.status(200).send('✅ Multi-Tool Bot is online and healthy.'));
 app.get('/webhook', (req, res) => {
     const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
@@ -202,7 +212,6 @@ app.get('/webhook', (req, res) => {
         res.sendStatus(403);
     }
 });
-
 app.post('/webhook', (req, res) => {
     if (req.body.object === 'page') {
         req.body.entry.forEach(entry => {
@@ -221,11 +230,8 @@ app.post('/webhook', (req, res) => {
         res.sendStatus(404);
     }
 });
-
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is listening on port ${PORT}.`));
-
-// --- API KEEPALIVE FUNCTION ---
 async function keepApiKeyActive() {
     try {
         const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
@@ -241,7 +247,6 @@ async function keepApiKeyActive() {
         console.error("❌ Humanizer API ping failed:", error.message);
     }
 }
-
 const threeDaysInMs = 259200000;
 server.on('listening', () => {
     keepApiKeyActive();
