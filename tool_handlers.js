@@ -1,12 +1,12 @@
-// tool_handlers.js (Final Version with New GPT-4o)
+// tool_handlers.js (Final Version with ChatGot.io)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
-const secrets = require('./secrets.js'); // Import secrets to get the new key
+const secrets = require('./secrets.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
-const hajiApiKey = secrets.HAJI_API_KEY; // Get the new key
-const URL_CHARACTER_LIMIT = 1800;
+const hajiApiKey = secrets.HAJI_API_KEY;
+const URL_CHARACTER_LIMIT = 10000;
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -149,9 +149,10 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
+// --- UPDATED AI FORWARDING FUNCTION ---
 async function forwardToAI(psid, query, model, roleplay = '') {
-    if (['grok', 'claude', 'o3mini'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
-        await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters). Please try a shorter message.`);
+    if (['grok', 'claude', 'o3mini', 'chatgot'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
+        await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model. Please try a shorter message or switch to Advanced GPT-4o.`);
         return;
     }
     let apiUrl, response;
@@ -160,13 +161,14 @@ async function forwardToAI(psid, query, model, roleplay = '') {
         if (model === 'gpt4o_advanced') {
             const encodedRoleplay = encodeURIComponent(roleplay);
             apiUrl = `https://haji-mix-api.gleeze.com/api/gpt4o?ask=${encodedQuery}&uid=${psid}&roleplay=${encodedRoleplay}&api_key=${hajiApiKey}`;
-            console.log(`Forwarding to Advanced GPT-4o via GET: ${apiUrl}`);
             response = await axios.get(apiUrl, { timeout: 60000 });
         } else {
             if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
             if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
             if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
-            console.log(`Forwarding to ${model.toUpperCase()} via GET: ${apiUrl}`);
+            // --- NEW: Added ChatGot.io ---
+            if (model === 'chatgot') apiUrl = `https://kaiz-apis.gleeze.com/api/chatgot-io?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
+            
             response = await axios.get(apiUrl, { timeout: 60000 });
         }
         const reply = response.data?.answer || response.data?.response;
