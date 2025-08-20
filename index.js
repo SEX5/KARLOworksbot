@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version)
+// index.js (Main Controller - Final Version with O3 Mini)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -20,7 +20,8 @@ What would you like to do?
 1. ChatGPT-4o
 2. ChatGPT-4.1
 3. Grok
-12. Claude 3 Haiku 🆕
+12. Claude 3 Haiku
+14. O3 Mini 🆕
 
 --- Media Tools ---
 4. Facebook Downloader
@@ -100,7 +101,8 @@ async function handleImageAttachment(psid, imageUrl) {
 // --- Logic Handlers for Conversation Flow ---
 function handleMenuSelection(psid, choice) {
     switch (choice) {
-        case '1': case '2': case '3': case '12':
+        // --- UPDATED AI SELECTION CASE ---
+        case '1': case '2': case '3': case '12': case '14':
             handleAiSelection(psid, choice);
             break;
         case '4': case '5': case '6':
@@ -132,12 +134,14 @@ function handleMenuSelection(psid, choice) {
     }
 }
 
+// --- UPDATED AI SELECTION HANDLER ---
 function handleAiSelection(psid, choice) {
     let model, modelName;
     if (choice === '1') { model = 'gpt4o'; modelName = 'ChatGPT-4o'; }
     if (choice === '2') { model = 'gpt4-1'; modelName = 'ChatGPT-4.1'; }
     if (choice === '3') { model = 'grok'; modelName = 'Grok'; }
     if (choice === '12') { model = 'claude'; modelName = 'Claude 3 Haiku'; }
+    if (choice === '14') { model = 'o3mini'; modelName = 'O3 Mini'; } // Added O3 Mini
     stateManager.setUserState(psid, 'in_chat', { model });
     messengerApi.sendText(psid, `✅ You are now chatting with ${modelName}. Ask me anything!\n\n(Type 'switch' or 'exit' at any time.)`);
 }
@@ -205,10 +209,8 @@ const server = app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is li
 async function keepApiKeyActive() {
     try {
         const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
-        // --- THIS IS THE CORRECTED PING URL ---
         const pingUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=Hello&apikey=${apiKey}`;
         console.log("Pinging Humanizer API to keep key active...");
-        // Use GET for the ping
         const response = await axios.get(pingUrl);
         if (response.data && (response.data.response || response.data.result)) {
             console.log("✅ Humanizer API ping successful.");
