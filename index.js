@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version with O3 Mini)
+// index.js (Main Controller - Final Version with Anime Heaven)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -21,7 +21,7 @@ What would you like to do?
 2. ChatGPT-4.1
 3. Grok
 12. Claude 3 Haiku
-14. O3 Mini 🆕
+14. O3 Mini
 
 --- Media Tools ---
 4. Facebook Downloader
@@ -29,6 +29,7 @@ What would you like to do?
 6. TikTok Downloader
 7. Pinterest Search
 10. Ghibli Image Filter ✨
+15. Anime Heaven Downloader 🆕
 
 --- Utility Tools ---
 8. Google Search
@@ -83,6 +84,14 @@ async function handleTextMessage(psid, message) {
             case 'awaiting_humanizer_text':
                 toolHandlers.handleHumanizerRequest(psid, messageText);
                 return;
+            // --- NEW ANIME HEAVEN STATES ---
+            case 'awaiting_anime_title':
+                stateManager.setUserState(psid, 'awaiting_anime_episode', { title: messageText });
+                await messengerApi.sendText(psid, "Got it. Now, what episode number would you like?");
+                return;
+            case 'awaiting_anime_episode':
+                toolHandlers.handleAnimeHeavenRequest(psid, userState.title, messageText);
+                return;
         }
     }
 
@@ -101,7 +110,6 @@ async function handleImageAttachment(psid, imageUrl) {
 // --- Logic Handlers for Conversation Flow ---
 function handleMenuSelection(psid, choice) {
     switch (choice) {
-        // --- UPDATED AI SELECTION CASE ---
         case '1': case '2': case '3': case '12': case '14':
             handleAiSelection(psid, choice);
             break;
@@ -128,20 +136,24 @@ function handleMenuSelection(psid, choice) {
             stateManager.setUserState(psid, 'awaiting_humanizer_text');
             messengerApi.sendText(psid, "✅ AI Text Humanizer selected. Please send the AI-generated text you want me to convert.");
             break;
+        // --- NEW ANIME HEAVEN SELECTION ---
+        case '15':
+            stateManager.setUserState(psid, 'awaiting_anime_title');
+            messengerApi.sendText(psid, "✅ Anime Heaven selected. What is the title of the anime you want to find?");
+            break;
         default:
             showMainMenu(psid);
             break;
     }
 }
 
-// --- UPDATED AI SELECTION HANDLER ---
 function handleAiSelection(psid, choice) {
     let model, modelName;
     if (choice === '1') { model = 'gpt4o'; modelName = 'ChatGPT-4o'; }
     if (choice === '2') { model = 'gpt4-1'; modelName = 'ChatGPT-4.1'; }
     if (choice === '3') { model = 'grok'; modelName = 'Grok'; }
     if (choice === '12') { model = 'claude'; modelName = 'Claude 3 Haiku'; }
-    if (choice === '14') { model = 'o3mini'; modelName = 'O3 Mini'; } // Added O3 Mini
+    if (choice === '14') { model = 'o3mini'; modelName = 'O3 Mini'; }
     stateManager.setUserState(psid, 'in_chat', { model });
     messengerApi.sendText(psid, `✅ You are now chatting with ${modelName}. Ask me anything!\n\n(Type 'switch' or 'exit' at any time.)`);
 }
