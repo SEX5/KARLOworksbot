@@ -1,48 +1,58 @@
 // messenger_api.js
 const axios = require('axios');
 const secrets = require('./secrets.js');
-
 const { PAGE_ACCESS_TOKEN } = secrets;
+const API_URL = `https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
 
-/**
- * Sends a text message to a user.
- * @param {string} psid - The user's Page-Scoped ID.
- * @param {string} text - The message to send.
- */
 async function sendText(psid, text) {
-    const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
+    const messageData = { recipient: { id: psid }, message: { text: text } };
     try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+        await axios.post(API_URL, messageData);
     } catch (error) {
-        console.error("Error sending message:", error.response?.data || error.message);
+        console.error("Error sending text message:", error.response?.data?.error || error.message);
     }
 }
 
-/**
- * Fetches a user's first and last name from the Messenger API.
- * Caches the result to avoid repeated API calls for the same user.
- */
-const userProfileCache = new Map();
-async function getUserProfile(psid) {
-    if (userProfileCache.has(psid)) {
-        return userProfileCache.get(psid);
-    }
+async function sendImage(psid, imageUrl) {
+    const messageData = {
+        recipient: { id: psid },
+        message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } }
+    };
     try {
-        const url = `https://graph.facebook.com/v19.0/${psid}?fields=first_name,last_name&access_token=${PAGE_ACCESS_TOKEN}`;
-        const response = await axios.get(url);
-        if (response.data) {
-            const fullName = `${response.data.first_name} ${response.data.last_name}`;
-            userProfileCache.set(psid, fullName); // Cache the name
-            return fullName;
+        await axios.post(API_URL, messageData);
+    } catch (error) {
+        await sendText(psid, `I couldn't display the image, but here is the link: ${imageUrl}`);
+    }
+}
+
+async function sendVideo(psid, videoUrl, title) {
+    await sendText(psid, "Sending video, please wait...");
+    const messageData = {
+        recipient: { id: psid },
+        message: { attachment: { type: "video", payload: { url: videoUrl, is_reusable: false } } }
+    };
+    try {
+        await axios.post(API_URL, messageData);
+    } catch (error) {
+        await sendText(psid, `I couldn't send the video directly (it might be too large). Here is the download link for "*${title}*":\n\n${videoUrl}`);
+    }
+}
+
+async function sendGenericTemplate(psid, elements) {
+    const messageData = {
+        recipient: { id: psid },
+        message: {
+            attachment: {
+                type: "template",
+                payload: { template_type: "generic", elements: elements }
+            }
         }
+    };
+    try {
+        await axios.post(API_URL, messageData);
     } catch (error) {
-        console.error(`Failed to fetch user profile for ${psid}:`, error.response?.data || error.message);
-        return psid; // Fallback to the ID if the API call fails
+        console.error("Error sending generic template:", error.response?.data?.error || error.message);
     }
-    return psid; // Fallback
 }
 
-module.exports = {
-    sendText,
-    getUserProfile
-};
+module.exports = { sendText, sendImage, sendVideo, sendGenericTemplate };
