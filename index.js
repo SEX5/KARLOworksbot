@@ -22,20 +22,21 @@ What would you like to do?
 3. Claude 3 Haiku
 4. O3 Mini
 5. ChatGot.io (Conversational)
+6. Gemini Pro (Conversational)
 
 --- Media Tools ---
-6. Facebook Downloader
-7. YouTube Downloader
-8. TikTok Downloader
-9. Pinterest Search
-10. Ghibli Image Filter ✨
-11. Anime Heaven Downloader
-12. Spotify Search 🎵
+7. Facebook Downloader
+8. YouTube Downloader
+9. TikTok Downloader
+10. Pinterest Search
+11. Ghibli Image Filter ✨
+12. Anime Heaven Downloader
+13. Spotify Search 🎵
 
 --- Utility Tools ---
-13. Google Search
-14. Google Translate
-15. AI Text Humanizer ✍️
+14. Google Search
+15. Google Translate
+16. AI Text Humanizer ✍️
 
 Just type the number of your choice.`;
     await messengerApi.sendText(psid, menuText);
@@ -125,38 +126,39 @@ function handleMenuSelection(psid, choice) {
         case '3': handleAiSelection(psid, 'claude'); break;
         case '4': handleAiSelection(psid, 'o3mini'); break;
         case '5': handleAiSelection(psid, 'chatgot'); break;
+        case '6': handleAiSelection(psid, 'geminipro'); break;
         
         // Media Tools
-        case '6': handleDownloaderSelection(psid, 'fb'); break;
-        case '7': handleDownloaderSelection(psid, 'yt'); break;
-        case '8': handleDownloaderSelection(psid, 'tik'); break;
-        case '9':
+        case '7': handleDownloaderSelection(psid, 'fb'); break;
+        case '8': handleDownloaderSelection(psid, 'yt'); break;
+        case '9': handleDownloaderSelection(psid, 'tik'); break;
+        case '10':
             stateManager.setUserState(psid, 'awaiting_pinterest_query');
             messengerApi.sendText(psid, "✅ Pinterest Search selected. What do you want to search for?");
             break;
-        case '10':
+        case '11':
             stateManager.setUserState(psid, 'awaiting_ghibli_image');
             messengerApi.sendText(psid, "✅ Ghibli Filter selected. Please send an image you want to transform!");
             break;
-        case '11':
+        case '12':
             stateManager.setUserState(psid, 'awaiting_anime_title');
             messengerApi.sendText(psid, "✅ Anime Heaven selected. What is the title of the anime?");
             break;
-        case '12':
+        case '13':
             stateManager.setUserState(psid, 'awaiting_spotify_query');
             messengerApi.sendText(psid, "✅ Spotify Search selected. What song or artist?");
             break;
 
         // Utility Tools
-        case '13':
+        case '14':
             stateManager.setUserState(psid, 'awaiting_google_query');
             messengerApi.sendText(psid, "✅ Google Search selected. What do you want to search for?");
             break;
-        case '14':
+        case '15':
             stateManager.setUserState(psid, 'awaiting_translate_text');
             messengerApi.sendText(psid, "✅ Google Translate selected. What text would you like to translate?");
             break;
-        case '15':
+        case '16':
             stateManager.setUserState(psid, 'awaiting_humanizer_text');
             messengerApi.sendText(psid, "✅ AI Text Humanizer selected. Please send the text to convert.");
             break;
@@ -183,6 +185,7 @@ function handleAiSelection(psid, model) {
     if (model === 'claude') modelName = 'Claude 3 Haiku';
     if (model === 'o3mini') modelName = 'O3 Mini';
     if (model === 'chatgot') { modelName = 'ChatGot.io'; hasMemory = true; }
+    if (model === 'geminipro') { modelName = 'Gemini Pro'; hasMemory = true; }
 
     let welcomeMessage = `✅ You are now chatting with ${modelName}. Ask me anything!`;
     if (hasMemory) {
