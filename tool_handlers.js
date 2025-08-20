@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with O3 Mini)
+// tool_handlers.js (Final Version with Anime Heaven)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -148,9 +148,8 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
-// --- THIS IS THE UPDATED AI FORWARDING FUNCTION ---
 async function forwardToAI(psid, query, model) {
-    if (query.length > URL_CHARACTER_LIMIT) {
+    if (['gpt4o', 'gpt4-1', 'grok', 'claude', 'o3mini'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
         await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters). Please try a shorter message.`);
         return;
     }
@@ -159,13 +158,10 @@ async function forwardToAI(psid, query, model) {
     
     try {
         const encodedQuery = encodeURIComponent(query);
-        
-        // All these APIs use the GET method.
         if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
         if (model === 'gpt4-1') apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1?query=${encodedQuery}&uid=${psid}`;
         if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
         if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
-        // --- NEW: Added O3 Mini ---
         if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
 
         console.log(`Forwarding to ${model.toUpperCase()} via GET: ${apiUrl}`);
@@ -183,6 +179,44 @@ async function forwardToAI(psid, query, model) {
     }
 }
 
+// --- NEW ANIME HEAVEN HANDLER ADDED HERE ---
+async function handleAnimeHeavenRequest(psid, title, episode) {
+    await messengerApi.sendText(psid, `Searching for "${title}" Episode ${episode}...`);
+    try {
+        const apiUrl = `https://kaiz-apis.gleeze.com/api/animeheaven?title=${encodeURIComponent(title)}&episode=${encodeURIComponent(episode)}&apikey=${kaizApiKey}`;
+        const response = await axios.get(apiUrl, { timeout: 60000 });
+
+        if (response.data && response.data.response) {
+            const animeData = response.data.response;
+            const episodeInfo = animeData.episodeList?.find(ep => ep.episode === episode);
+
+            if (episodeInfo && episodeInfo.download_url) {
+                // First, send the details in a nice format
+                let details = `✅ Found it!\n\n`;
+                details += `*Title:* ${animeData.title}\n`;
+                details += `*Description:* ${animeData.description}\n`;
+                details += `*Score:* ${animeData.score}`;
+                await messengerApi.sendImage(psid, animeData.thumbnail);
+                await messengerApi.sendText(psid, details);
+
+                // Now, send the video
+                await messengerApi.sendVideo(psid, episodeInfo.download_url, `${animeData.title} - Episode ${episode}`);
+            } else {
+                await messengerApi.sendText(psid, `❌ I found the anime "${animeData.title}", but I couldn't find Episode ${episode}. Please check the episode number.`);
+            }
+        } else {
+            await messengerApi.sendText(psid, `❌ Sorry, I couldn't find any anime with that title. Please check the spelling.`);
+        }
+    } catch (error) {
+        console.error("Anime Heaven API Error:", error.response?.data || error.message);
+        await messengerApi.sendText(psid, "❌ Sorry, the Anime Heaven service is currently unavailable.");
+    } finally {
+        stateManager.clearUserState(psid);
+        await messengerApi.sendText(psid, "Type 'menu' to start a new task.");
+    }
+}
+
+
 module.exports = {
     handleDownloadRequest,
     handleGoogleSearch,
@@ -190,5 +224,6 @@ module.exports = {
     handleTranslateRequest,
     handleGhibliRequest,
     handleHumanizerRequest,
-    forwardToAI
+    forwardToAI,
+    handleAnimeHeavenRequest // --- EXPORT THE NEW FUNCTION ---
 };
