@@ -210,7 +210,7 @@ async function keepApiKeyActive() {
         console.log("Pinging Humanizer API to keep key active...");
         // Use GET for the ping
         const response = await axios.get(pingUrl);
-        if (response.data && (response.data.response || response.data.result)) { // Check for both possible success keys
+        if (response.data && (response.data.response || response.data.result)) {
             console.log("✅ Humanizer API ping successful.");
         } else {
             console.warn("⚠️ Humanizer API ping returned an unexpected response, but was likely successful:", response.data);
