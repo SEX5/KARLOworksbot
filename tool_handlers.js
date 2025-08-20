@@ -1,9 +1,11 @@
-// tool_handlers.js
+// tool_handlers.js (Final Version with Long Message Handling)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
+// A safe character limit for APIs that use GET requests in the URL.
+const RAPIDO_AI_CHAR_LIMIT = 1500;
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -125,8 +127,9 @@ async function handleGhibliRequest(psid, imageUrl) {
 async function handleHumanizerRequest(psid, text) {
     await messengerApi.sendText(psid, "✍️ Humanizing your text... Please wait.");
     try {
-        const apiUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=${encodeURIComponent(text)}&apikey=${kaizApiKey}`;
-        const response = await axios.get(apiUrl);
+        const apiUrl = `https://kaiz-apis.gleeze.com/api/humanizer`;
+        const payload = { q: text, apikey: kaizApiKey };
+        const response = await axios.post(apiUrl, payload); // Using POST for safety
         if (response.data && response.data.response) {
             await messengerApi.sendText(psid, "✅ Here is the humanized version:");
             await messengerApi.sendText(psid, response.data.response);
@@ -141,14 +144,37 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
+// --- THIS IS THE FULLY CORRECTED AI FORWARDING FUNCTION ---
 async function forwardToAI(psid, query, model) {
-    let apiUrl, payload;
-    if (model === 'gpt4o') { apiUrl = `https://rapido.zetsu.xyz/api/gpt4o`; payload = { query, uid: psid }; }
-    if (model === 'gpt4-1') { apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1`; payload = { query, uid: psid }; }
-    if (model === 'grok') { apiUrl = `https://rapido.zetsu.xyz/api/grok`; payload = { query }; }
-    if (model === 'claude') { apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku`; payload = { ask: query, apikey: kaizApiKey }; }
+    // --- STEP 1: Check for long messages on the limited APIs ---
+    if (['gpt4o', 'gpt4-1', 'grok'].includes(model) && query.length > RAPIDO_AI_CHAR_LIMIT) {
+        await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${RAPIDO_AI_CHAR_LIMIT} characters). \n\nPlease try shortening your message, or switch to Claude (Model 12) which can handle longer text.`);
+        return; // Stop the function immediately
+    }
+
+    let apiUrl, response;
+    
     try {
-        const response = await axios.post(apiUrl, payload);
+        if (['gpt4o', 'gpt4-1', 'grok'].includes(model)) {
+            // --- STEP 2: Use GET for Rapido APIs (which have the length limit) ---
+            const encodedQuery = encodeURIComponent(query);
+            if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
+            if (model === 'gpt4-1') apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1?query=${encodedQuery}&uid=${psid}`;
+            if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
+            
+            console.log(`Forwarding to ${model.toUpperCase()} via GET: ${apiUrl}`);
+            response = await axios.get(apiUrl);
+
+        } else if (model === 'claude') {
+            // --- STEP 3: Use POST for Kaiz APIs (which handle long messages) ---
+            apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku`;
+            const payload = { ask: query, apikey: kaizApiKey };
+
+            console.log(`Forwarding to ${model.toUpperCase()} via POST: ${apiUrl}`);
+            response = await axios.post(apiUrl, payload);
+        }
+
+        // --- STEP 4: Process the response ---
         if (response.data && response.data.response) {
             await messengerApi.sendText(psid, response.data.response);
             stateManager.setUserState(psid, 'in_chat', { model });
@@ -156,6 +182,7 @@ async function forwardToAI(psid, query, model) {
             await messengerApi.sendText(psid, `Sorry, an error occurred: ${response.data?.error || 'The AI failed to respond.'}`);
         }
     } catch (error) {
+        console.error(`Error calling ${model} API:`, error.response?.data || error.message);
         await messengerApi.sendText(psid, "Sorry, the AI assistant is currently unavailable.");
     }
 }
