@@ -1,11 +1,11 @@
-// tool_handlers.js (Final Version with Correct API Methods for All AIs)
+// tool_handlers.js (Final Version with Correct GET Method for All AIs)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 // A safe character limit for APIs that put the query in the URL.
-const URL_CHARACTER_LIMIT = 10000;
+const URL_CHARACTER_LIMIT = 1800;
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -125,12 +125,15 @@ async function handleGhibliRequest(psid, imageUrl) {
 }
 
 async function handleHumanizerRequest(psid, text) {
+    if (text.length > URL_CHARACTER_LIMIT) {
+        await messengerApi.sendText(psid, `⚠️ Your text is too long for the Humanizer tool (over ${URL_CHARACTER_LIMIT} characters). Please try a shorter text.`);
+        return;
+    }
+    
     await messengerApi.sendText(psid, "✍️ Humanizing your text... Please wait.");
     try {
-        const apiUrl = `https://kaiz-apis.gleeze.com/api/humanizer`;
-        const payload = { q: text, apikey: kaizApiKey };
-        // Use POST for Kaiz APIs to handle long text
-        const response = await axios.post(apiUrl, payload);
+        const apiUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=${encodeURIComponent(text)}&apikey=${kaizApiKey}`;
+        const response = await axios.get(apiUrl);
         if (response.data && response.data.response) {
             await messengerApi.sendText(psid, "✅ Here is the humanized version:");
             await messengerApi.sendText(psid, response.data.response);
@@ -147,35 +150,26 @@ async function handleHumanizerRequest(psid, text) {
 
 // --- THIS IS THE FINAL AI FORWARDING FUNCTION ---
 async function forwardToAI(psid, query, model) {
-    // Check for long messages ONLY on the APIs that have a URL length limit.
-    if (['gpt4o', 'gpt4-1', 'grok'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
-        await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model. Please try a shorter message, or switch to Claude (Model 12) which is designed for long text.`);
+    // Check if the message is too long for ANY of the GET-based APIs.
+    if (query.length > URL_CHARACTER_LIMIT) {
+        await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters). Please try a shorter message.`);
         return;
     }
 
-    let apiUrl, response;
+    let apiUrl;
     
     try {
-        // Use the fast GET method for the Rapido APIs
-        if (['gpt4o', 'gpt4-1', 'grok'].includes(model)) {
-            const encodedQuery = encodeURIComponent(query);
-            if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
-            if (model === 'gpt4-1') apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1?query=${encodedQuery}&uid=${psid}`;
-            if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
-            
-            console.log(`Forwarding to ${model.toUpperCase()} via GET: ${apiUrl}`);
-            response = await axios.get(apiUrl, { timeout: 60000 });
+        const encodedQuery = encodeURIComponent(query);
+        
+        // All these APIs use the GET method with the query in the URL.
+        if (model === 'gpt4o') apiUrl = `https://rapido.zetsu.xyz/api/gpt4o?query=${encodedQuery}&uid=${psid}`;
+        if (model === 'gpt4-1') apiUrl = `https://rapido.zetsu.xyz/api/gpt4-1?query=${encodedQuery}&uid=${psid}`;
+        if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
+        if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
 
-        // Use the robust POST method for the Kaiz APIs
-        } else if (model === 'claude') {
-            apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku`;
-            const payload = { ask: query, apikey: kaizApiKey };
+        console.log(`Forwarding to ${model.toUpperCase()} via GET: ${apiUrl}`);
+        const response = await axios.get(apiUrl, { timeout: 60000 });
 
-            console.log(`Forwarding to ${model.toUpperCase()} via POST: ${apiUrl}`);
-            response = await axios.post(apiUrl, payload, { timeout: 60000 });
-        }
-
-        // Process the response from either API
         if (response.data && response.data.response) {
             await messengerApi.sendText(psid, response.data.response);
             stateManager.setUserState(psid, 'in_chat', { model });
