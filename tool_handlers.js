@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with ChatGot.io)
+// tool_handlers.js (Final Version with Gemini Pro)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -151,12 +151,15 @@ async function handleHumanizerRequest(psid, text) {
 
 // --- UPDATED AI FORWARDING FUNCTION ---
 async function forwardToAI(psid, query, model, roleplay = '') {
-    if (['grok', 'claude', 'o3mini', 'chatgot'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
+    // Check for long messages ONLY on the APIs that have this limitation.
+    if (['grok', 'claude', 'o3mini', 'geminipro'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
         await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model. Please try a shorter message or switch to Advanced GPT-4o.`);
         return;
     }
+    
     let apiUrl, response;
     const encodedQuery = encodeURIComponent(query);
+
     try {
         if (model === 'gpt4o_advanced') {
             const encodedRoleplay = encodeURIComponent(roleplay);
@@ -166,11 +169,13 @@ async function forwardToAI(psid, query, model, roleplay = '') {
             if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
             if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
             if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
-            // --- NEW: Added ChatGot.io ---
             if (model === 'chatgot') apiUrl = `https://kaiz-apis.gleeze.com/api/chatgot-io?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
+            // --- NEW: Added Gemini Pro ---
+            if (model === 'geminipro') apiUrl = `https://kaiz-apis.gleeze.com/api/gemini-pro?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
             
             response = await axios.get(apiUrl, { timeout: 60000 });
         }
+        
         const reply = response.data?.answer || response.data?.response;
         if (reply) {
             await messengerApi.sendText(psid, reply);
