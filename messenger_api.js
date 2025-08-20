@@ -5,7 +5,7 @@ const secrets = require('./secrets.js');
 const { PAGE_ACCESS_TOKEN } = secrets;
 
 const API_URL = `https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`;
-const MESSAGE_CHAR_LIMIT = 2000; // Facebook's character limit
+const MESSAGE_CHAR_LIMIT = 10000; // Facebook's character limit
 
 /**
  * Sends a text message. If the message is too long, it splits it into
