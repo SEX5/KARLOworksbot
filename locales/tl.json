@@ -5,6 +5,7 @@
   "menu_option_3": "🔁 3️⃣  Mag-request ng replacement account",
   "menu_option_4": "💰 4️⃣  Custom Gold/Money",
   "menu_option_5": "📩 5️⃣  Kausapin ang admin",
+  "menu_option_6": "🧾 6️⃣ Tingnan ang mga patunay",
   "menu_suffix": "I-type lang ang number na napili mo! 😊",
   "admin_online": "Online ang admin ngayon! 🟢\n\nPuwede mo siyang i-message diretso para sa tulong sa link na ito:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nPwede ka ring pumili sa mga option sa baba:",
   "admin_offline": "Offline muna ang admin ngayon. 🔴\n\nPwede mong gamitin ang automated menu sa baba para sa tulong.",
@@ -56,5 +57,6 @@
   "custom_mod_prompt_payment": "✅ Galing! Nag-request ka ng *{orderAmount} {orderType}*.\n\nPaki-send ang {price} PHP sa GCash na ito:\n 👨🏻‍💻Karl Abalunan\n📞{gcashNumber}\n\n📲 Pagkatapos magbayad, paki-send ang screenshot ng resibo dito.\n(I-type ang 'Menu' para bumalik pagkatapos i-send ang resibo.)",
   "custom_mod_receipt_fail": "🔍 Hindi ko masyadong makita 'yung amount o 'yung 13-digit reference number sa resibo. Na-notify na ang admin para tulungan ka! 🙏",
   "custom_mod_mismatch": "🤔 Hmm, hindi tugma 'yung amount sa resibo ({amount} PHP) sa inaasahang presyo ({price} PHP). Na-notify na ang admin para tulungan ka. Hintayin mo na lang sila.",
-  "custom_mod_success": "✅ Salamat! Nareceive na namin ang custom mod order mo at pinaprocess na ng admin. Babalikan ka namin agad! 💙\n(I-type ang 'Menu' para bumalik.)"
+  "custom_mod_success": "✅ Salamat! Nareceive na namin ang custom mod order mo at pinaprocess na ng admin. Babalikan ka namin agad! 💙\n(I-type ang 'Menu' para bumalik.)",
+  "proofs_message": "Narito ang aming mga patunay ng pagiging lehitimo! Maaari mong tingnan ang mga ito dito:\n\nhttps://www.facebook.com/share/g/15CfJy2SRSt/\n\n(I-type ang 'Menu' para bumalik.)"
 }
