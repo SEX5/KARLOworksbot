@@ -19,6 +19,7 @@ ${lang.getText('menu_option_2', userLang)}
 ${lang.getText('menu_option_3', userLang)}
 ${lang.getText('menu_option_4', userLang)}
 ${lang.getText('menu_option_5', userLang)}
+${lang.getText('menu_option_6', userLang)}
 ${lang.getText('menu_suffix', userLang)}`;
     await sendText(sender_psid, menu);
     // stateManager.clearUserState(sender_psid); // State is cleared in index.js to preserve language
@@ -101,6 +102,11 @@ async function handleViewMods(sender_psid, sendText, userLang = 'en') {
     response += `\n${lang.getText('mods_purchase_prompt', userLang)}`;
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'awaiting_want_mod', { lang: userLang });
+}
+
+// --- View Proofs ---
+async function handleViewProofs(sender_psid, sendText, userLang = 'en') {
+    await sendText(sender_psid, lang.getText('proofs_message', userLang));
 }
 
 // --- Purchase Flow ---
@@ -440,5 +446,6 @@ module.exports = {
     // Add new custom mod functions to exports
     promptForCustomMod,
     handleCustomModOrder,
-    handleCustomModReceipt
+    handleCustomModReceipt,
+    handleViewProofs
 };
