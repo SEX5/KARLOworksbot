@@ -199,6 +199,7 @@ async function handleMessage(sender_psid, webhook_event) {
             case '3': return userHandler.promptForReplacement(sender_psid, sendText, userLang);
             case '4': return userHandler.promptForCustomMod(sender_psid, sendText, userLang);
             case '5': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
+            case '6': return userHandler.handleViewProofs(sender_psid, sendText, userLang);
             default: return userHandler.showUserMenu(sender_psid, sendText, userLang);
         }
     }
