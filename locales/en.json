@@ -5,6 +5,7 @@
   "menu_option_3": "🔁 3️⃣  Request a replacement account",
   "menu_option_4": "💰 4️⃣ Custom Gold/Money",
   "menu_option_5": "📩 5️⃣  Contact the admin",
+  "menu_option_6": "🧾 6️⃣ View Proofs of Legitimacy",
   "menu_suffix": "Just type the number of your choice! 😊",
   "admin_online": "The admin is currently online! 🟢\n\nYou can message them directly for assistance at:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nAlternatively, you can use the options below:",
   "admin_offline": "The admin is currently offline. 🔴\n\nYou can use the automated menu below for assistance.",
@@ -56,5 +57,6 @@
   "custom_mod_prompt_payment": "✅ Great! You've requested *{orderAmount} {orderType}*.\n\nPlease send {price} PHP via GCash to:\n 👨🏻‍💻Karl Abalunan\n📞{gcashNumber}\n\n📲 After paying, please send a screenshot of your receipt here.\n(Type 'Menu' to return to the main menu after sending the receipt.)",
   "custom_mod_receipt_fail": "🔍 I couldn't clearly read the amount or a valid 13-digit reference number from that receipt. An admin has been notified and will assist you shortly! 🙏",
   "custom_mod_mismatch": "🤔 The amount on the receipt ({amount} PHP) doesn't match the expected price ({price} PHP). An admin has been notified to assist you. Please wait for them to reach out.",
-  "custom_mod_success": "✅ Thank you! Your custom mod order has been received and sent to the admin for processing. We'll get back to you shortly! 💙\n(Type 'Menu' to return to the main menu.)"
+  "custom_mod_success": "✅ Thank you! Your custom mod order has been received and sent to the admin for processing. We'll get back to you shortly! 💙\n(Type 'Menu' to return to the main menu.)",
+  "proofs_message": "Here are our proofs of legitimacy! You can view them here:\n\nhttps://www.facebook.com/share/g/15CfJy2SRSt/\n\n(Type 'Menu' to return to the main menu.)"
 }
