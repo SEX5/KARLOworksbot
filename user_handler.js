@@ -97,7 +97,7 @@ async function handleViewMods(sender_psid, sendText, userLang = 'en') {
     let response = `${lang.getText('mods_header', userLang)}\n`;
     mods.forEach(mod => {
         const claimsText = mod.default_claims_max === 1 ? '1 Replacement' : `${mod.default_claims_max} Replacements`;
-        response += `\n📦 Type ${mod.id}: ${mod.description || 'N/A'}\n💰 Price: ${mod.price} PHP\n🔁 FreeAcc: ${claimsText}\n🖼️ Image: ${mod.image_url || 'N/A'}\n`;
+        response += `\n📦 Type ${mod.id}:\n${mod.description || 'N/A'}\n💰 Price: ${mod.price} PHP\n🔁 FreeAcc: ${claimsText}\n🖼️ Image: ${mod.image_url || 'N/A'}\n`;
     });
     response += `\n${lang.getText('mods_purchase_prompt', userLang)}`;
     await sendText(sender_psid, response);
