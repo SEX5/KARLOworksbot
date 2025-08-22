@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version with Correct Descriptions)
+// index.js (Main Controller - Final Version with Simplified OpenRouter)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -48,6 +48,8 @@ Just type the number of your choice.`;
 async function showOpenRouterMenu(psid) {
     const menuText = `🧠 OpenRouter Model Selection 🧠
 
+All models below have conversation memory.
+
 Please choose a model to chat with:
 
 1. Llama 3.3 (70B)
@@ -81,13 +83,10 @@ async function handleTextMessage(psid, message) {
     if (userState?.state) {
         switch (userState.state) {
             case 'in_chat':
-                handleInChat(psid, lowerCaseText, messageText, userState.model, userState.roleplay, userState.system);
+                handleInChat(psid, lowerCaseText, messageText, userState.model, userState.roleplay);
                 return;
             case 'awaiting_openrouter_model':
-                handleOpenRouterModelSelection(psid, lowerCaseText);
-                return;
-            case 'awaiting_openrouter_system':
-                handleOpenRouterSystemPrompt(psid, messageText, userState.model);
+                handleOpenRouterSelection(psid, lowerCaseText);
                 return;
             case 'awaiting_gpt4o_roleplay':
                 handleGpt4oRoleplay(psid, messageText);
@@ -139,7 +138,7 @@ async function handleImageAttachment(psid, imageUrl) {
     if (userState?.state === 'in_chat' && (userState.model === 'kaiz' || userState.model === 'qwen/qwen2.5-vl-72b-instruct:free')) {
         let aiName = userState.model === 'kaiz' ? 'Kaiz AI' : 'Qwen 2.5';
         await messengerApi.sendText(psid, `🖼️ Image received! Analyzing with ${aiName}...`);
-        toolHandlers.forwardToAI(psid, "What do you see in this image?", userState.model, '', imageUrl, userState.system);
+        toolHandlers.forwardToAI(psid, "What do you see in this image?", userState.model, '', imageUrl);
     } 
     else if (userState?.state === 'awaiting_ghibli_image') {
         toolHandlers.handleGhibliRequest(psid, imageUrl);
@@ -208,7 +207,7 @@ function handleMenuSelection(psid, choice) {
     }
 }
 
-function handleOpenRouterModelSelection(psid, choice) {
+function handleOpenRouterSelection(psid, choice) {
     let model;
     switch (choice) {
         case '1': model = 'meta-llama/llama-3.3-70b-instruct:free'; break;
@@ -219,20 +218,10 @@ function handleOpenRouterModelSelection(psid, choice) {
             messengerApi.sendText(psid, "Invalid selection. Please choose a number from the list.");
             return;
     }
-    stateManager.setUserState(psid, 'awaiting_openrouter_system', { model });
-    messengerApi.sendText(psid, `✅ Model selected.\nNow, please provide a system prompt (e.g., "You are a friendly assistant"). Or, type 'skip' for the default.`);
-}
-
-function handleOpenRouterSystemPrompt(psid, text, model) {
-    const system = text.toLowerCase() === 'skip' ? '' : text;
-    stateManager.setUserState(psid, 'in_chat', { model, system });
+    stateManager.setUserState(psid, 'in_chat', { model });
     let modelFriendlyName = model.split('/')[1].split(':')[0];
-    let confirmation = `✅ You are now chatting with OpenRouter's ${modelFriendlyName}.`;
-    if (system) {
-        confirmation += `\n*System Prompt:* "${system}"`;
-    }
-    // Updated to correctly check for the Qwen vision model
-    if (model === 'qwen/qwen2.5-vl-72b-instruct:free') {
+    let confirmation = `✅ You are now chatting with OpenRouter's ${modelFriendlyName}. This AI remembers your conversation.`;
+    if (model.includes('vl')) {
         confirmation += `\nYou can ask questions or send an image!`;
     }
     confirmation += `\n\n(Type 'switch' or 'exit' at any time.)`;
@@ -275,7 +264,7 @@ function handleDownloaderSelection(psid, platform) {
     messengerApi.sendText(psid, `✅ ${platformName} Downloader selected. Please send me the full video URL.`);
 }
 
-function handleInChat(psid, lowerCaseText, originalText, model, roleplay, system) {
+function handleInChat(psid, lowerCaseText, originalText, model, roleplay) {
     if (lowerCaseText === 'switch') {
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "🔄 Switching tasks...");
@@ -284,7 +273,7 @@ function handleInChat(psid, lowerCaseText, originalText, model, roleplay, system
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "✅ You have exited the chat session. Type 'menu' to start again.");
     } else {
-        toolHandlers.forwardToAI(psid, originalText, model, roleplay, '', system);
+        toolHandlers.forwardToAI(psid, originalText, model, roleplay);
     }
 }
 
