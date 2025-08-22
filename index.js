@@ -151,7 +151,6 @@ async function handleImageAttachment(psid, imageUrl) {
 // --- Logic Handlers for Conversation Flow ---
 function handleMenuSelection(psid, choice) {
     switch (choice) {
-        // AI Models
         case '1':
             stateManager.setUserState(psid, 'awaiting_openrouter_model');
             showOpenRouterMenu(psid);
@@ -166,8 +165,6 @@ function handleMenuSelection(psid, choice) {
         case '6': handleAiSelection(psid, 'chatgot'); break;
         case '7': handleAiSelection(psid, 'geminipro'); break;
         case '8': handleAiSelection(psid, 'kaiz'); break;
-        
-        // Media Tools
         case '9': handleDownloaderSelection(psid, 'fb'); break;
         case '10': handleDownloaderSelection(psid, 'yt'); break;
         case '11': handleDownloaderSelection(psid, 'tik'); break;
@@ -187,8 +184,6 @@ function handleMenuSelection(psid, choice) {
             stateManager.setUserState(psid, 'awaiting_spotify_query');
             messengerApi.sendText(psid, "✅ Spotify Search selected. What song or artist?");
             break;
-
-        // Utility Tools
         case '16':
             stateManager.setUserState(psid, 'awaiting_google_query');
             messengerApi.sendText(psid, "✅ Google Search selected. What do you want to search for?");
