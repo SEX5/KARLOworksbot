@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with Simplified OpenRouter)
+// tool_handlers.js (Final Version with OpenRouter)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -6,7 +6,7 @@ const secrets = require('./secrets.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 const hajiApiKey = secrets.HAJI_API_KEY;
-const URL_CHARACTER_LIMIT = 1800;
+const URL_CHARACTER_LIMIT = 1800; // A safe limit for GET requests
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -149,6 +149,7 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
+// --- THIS IS THE UPDATED AI FORWARDING FUNCTION ---
 async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '') {
     // Length check for APIs that use GET requests
     if (query.length > URL_CHARACTER_LIMIT) {
