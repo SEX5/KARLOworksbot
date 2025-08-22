@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with Kaiz AI)
+// tool_handlers.js (Final Version with OpenRouter)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -6,7 +6,7 @@ const secrets = require('./secrets.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 const hajiApiKey = secrets.HAJI_API_KEY;
-const URL_CHARACTER_LIMIT = 10000;
+const URL_CHARACTER_LIMIT = 1800; // A safe limit for GET requests
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -149,10 +149,9 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
-// --- UPDATED AI FORWARDING FUNCTION ---
-async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '') {
-    if (['grok', 'claude', 'o3mini', 'geminipro', 'kaiz'].includes(model) && query.length > URL_CHARACTER_LIMIT) {
-        await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model. Please try a shorter message or switch to Advanced GPT-4o.`);
+async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', system = '') {
+    if ((query.length + system.length) > URL_CHARACTER_LIMIT) {
+        await messengerApi.sendText(psid, `⚠️ Your message and/or system prompt is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters combined). Please try a shorter message.`);
         return;
     }
     
@@ -160,31 +159,35 @@ async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '') {
     const encodedQuery = encodeURIComponent(query);
 
     try {
-        if (model === 'gpt4o_advanced') {
+        if (model.includes('/')) {
+            const encodedModel = encodeURIComponent(model);
+            const encodedSystem = encodeURIComponent(system);
+            apiUrl = `https://rapido.zetsu.xyz/api/open-router?query=${encodedQuery}&uid=${psid}&model=${encodedModel}&system=${encodedSystem}`;
+            console.log(`Forwarding to OpenRouter (${model}) via GET: ${apiUrl}`);
+            response = await axios.get(apiUrl, { timeout: 120000 });
+        
+        } else if (model === 'gpt4o_advanced') {
             const encodedRoleplay = encodeURIComponent(roleplay);
             apiUrl = `https://haji-mix-api.gleeze.com/api/gpt4o?ask=${encodedQuery}&uid=${psid}&roleplay=${encodedRoleplay}&api_key=${hajiApiKey}`;
             response = await axios.get(apiUrl, { timeout: 60000 });
+        
         } else {
             if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
             if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
             if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
             if (model === 'chatgot') apiUrl = `https://kaiz-apis.gleeze.com/api/chatgot-io?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
             if (model === 'geminipro') apiUrl = `https://kaiz-apis.gleeze.com/api/gemini-pro?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
-            // --- NEW: Kaiz AI with Image Support ---
             if (model === 'kaiz') {
                 apiUrl = `https://kaiz-apis.gleeze.com/api/kaiz-ai?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
-                if (imageUrl) {
-                    apiUrl += `&image_url=${encodeURIComponent(imageUrl)}`;
-                }
+                if (imageUrl) { apiUrl += `&image_url=${encodeURIComponent(imageUrl)}`; }
             }
-            
             response = await axios.get(apiUrl, { timeout: 60000 });
         }
         
         const reply = response.data?.answer || response.data?.response;
         if (reply) {
             await messengerApi.sendText(psid, reply);
-            stateManager.setUserState(psid, 'in_chat', { model, roleplay });
+            stateManager.setUserState(psid, 'in_chat', { model, roleplay, system });
         } else {
             await messengerApi.sendText(psid, `Sorry, an error occurred: ${response.data?.error || 'The AI failed to respond.'}`);
         }
