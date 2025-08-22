@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with OpenRouter)
+// tool_handlers.js (Final Version with Simplified OpenRouter)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -6,7 +6,7 @@ const secrets = require('./secrets.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 const hajiApiKey = secrets.HAJI_API_KEY;
-const URL_CHARACTER_LIMIT = 1800; // A safe limit for GET requests
+const URL_CHARACTER_LIMIT = 1800;
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -149,9 +149,10 @@ async function handleHumanizerRequest(psid, text) {
     }
 }
 
-async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', system = '') {
-    if ((query.length + system.length) > URL_CHARACTER_LIMIT) {
-        await messengerApi.sendText(psid, `⚠️ Your message and/or system prompt is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters combined). Please try a shorter message.`);
+async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '') {
+    // Length check for APIs that use GET requests
+    if (query.length > URL_CHARACTER_LIMIT) {
+        await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters combined). Please try a shorter message.`);
         return;
     }
     
@@ -159,18 +160,20 @@ async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', sys
     const encodedQuery = encodeURIComponent(query);
 
     try {
+        // OpenRouter Models (Simplified: no system prompt)
         if (model.includes('/')) {
             const encodedModel = encodeURIComponent(model);
-            const encodedSystem = encodeURIComponent(system);
-            apiUrl = `https://rapido.zetsu.xyz/api/open-router?query=${encodedQuery}&uid=${psid}&model=${encodedModel}&system=${encodedSystem}`;
+            apiUrl = `https://rapido.zetsu.xyz/api/open-router?query=${encodedQuery}&uid=${psid}&model=${encodedModel}`;
             console.log(`Forwarding to OpenRouter (${model}) via GET: ${apiUrl}`);
             response = await axios.get(apiUrl, { timeout: 120000 });
         
+        // Advanced GPT-4o
         } else if (model === 'gpt4o_advanced') {
             const encodedRoleplay = encodeURIComponent(roleplay);
             apiUrl = `https://haji-mix-api.gleeze.com/api/gpt4o?ask=${encodedQuery}&uid=${psid}&roleplay=${encodedRoleplay}&api_key=${hajiApiKey}`;
             response = await axios.get(apiUrl, { timeout: 60000 });
         
+        // Other existing models
         } else {
             if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
             if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
@@ -187,7 +190,7 @@ async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', sys
         const reply = response.data?.answer || response.data?.response;
         if (reply) {
             await messengerApi.sendText(psid, reply);
-            stateManager.setUserState(psid, 'in_chat', { model, roleplay, system });
+            stateManager.setUserState(psid, 'in_chat', { model, roleplay });
         } else {
             await messengerApi.sendText(psid, `Sorry, an error occurred: ${response.data?.error || 'The AI failed to respond.'}`);
         }
