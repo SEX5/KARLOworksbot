@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version with Kaiz AI)
+// index.js (Main Controller - Final Version with Correct Descriptions)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -17,31 +17,53 @@ async function showMainMenu(psid) {
 What would you like to do?
 
 --- AI Models ---
-1. Kaiz AI (Vision & Memory) 🆕
+1. OpenRouter (Multiple Models)
 2. GPT-4o (Advanced 🚀)
 3. Grok
 4. Claude 3 Haiku
 5. O3 Mini
 6. ChatGot.io (Memory)
 7. Gemini Pro (Memory)
+8. Kaiz AI (Vision & Memory)
 
 --- Media Tools ---
-8. Facebook Downloader
-9. YouTube Downloader
-10. TikTok Downloader
-11. Pinterest Search
-12. Ghibli Image Filter ✨
-13. Anime Heaven Downloader
-14. Spotify Search 🎵
+9. Facebook Downloader
+10. YouTube Downloader
+11. TikTok Downloader
+12. Pinterest Search
+13. Ghibli Image Filter ✨
+14. Anime Heaven Downloader
+15. Spotify Search 🎵
 
 --- Utility Tools ---
-15. Google Search
-16. Google Translate
-17. AI Text Humanizer ✍️
+16. Google Search
+17. Google Translate
+18. AI Text Humanizer ✍️
 
 Just type the number of your choice.`;
     await messengerApi.sendText(psid, menuText);
 }
+
+// --- OpenRouter Sub-Menu ---
+async function showOpenRouterMenu(psid) {
+    const menuText = `🧠 OpenRouter Model Selection 🧠
+
+Please choose a model to chat with:
+
+1. Llama 3.3 (70B)
+   A powerful multilingual model from Meta, great for efficient and detailed conversations.
+
+2. Qwen 2.5 (72B)
+   A strong language model capable of complex reasoning and understanding long text.
+
+3. GLM-4.5-air
+   A powerful model for complex reasoning and tasks, offering a special 'thinking mode'.
+
+4. Kimi K2
+   A massive model optimized for complex, multi-step tasks, coding, and logical reasoning.`;
+    await messengerApi.sendText(psid, menuText);
+}
+
 
 // --- Message Handlers ---
 async function handleTextMessage(psid, message) {
@@ -59,8 +81,13 @@ async function handleTextMessage(psid, message) {
     if (userState?.state) {
         switch (userState.state) {
             case 'in_chat':
-                // Pass an empty imageUrl for text-only follow-ups
-                handleInChat(psid, lowerCaseText, messageText, userState.model, userState.roleplay, '');
+                handleInChat(psid, lowerCaseText, messageText, userState.model, userState.roleplay, userState.system);
+                return;
+            case 'awaiting_openrouter_model':
+                handleOpenRouterModelSelection(psid, lowerCaseText);
+                return;
+            case 'awaiting_openrouter_system':
+                handleOpenRouterSystemPrompt(psid, messageText, userState.model);
                 return;
             case 'awaiting_gpt4o_roleplay':
                 handleGpt4oRoleplay(psid, messageText);
@@ -109,11 +136,10 @@ async function handleTextMessage(psid, message) {
 
 async function handleImageAttachment(psid, imageUrl) {
     const userState = stateManager.getUserState(psid);
-
-    if (userState?.state === 'in_chat' && userState.model === 'kaiz') {
-        await messengerApi.sendText(psid, "🖼️ Image received! Analyzing with Kaiz AI...");
-        // Ask a default question about the image, pass the image URL
-        toolHandlers.forwardToAI(psid, "What do you see in this image?", userState.model, '', imageUrl);
+    if (userState?.state === 'in_chat' && (userState.model === 'kaiz' || userState.model === 'qwen/qwen2.5-vl-72b-instruct:free')) {
+        let aiName = userState.model === 'kaiz' ? 'Kaiz AI' : 'Qwen 2.5';
+        await messengerApi.sendText(psid, `🖼️ Image received! Analyzing with ${aiName}...`);
+        toolHandlers.forwardToAI(psid, "What do you see in this image?", userState.model, '', imageUrl, userState.system);
     } 
     else if (userState?.state === 'awaiting_ghibli_image') {
         toolHandlers.handleGhibliRequest(psid, imageUrl);
@@ -125,10 +151,12 @@ async function handleImageAttachment(psid, imageUrl) {
 
 // --- Logic Handlers for Conversation Flow ---
 function handleMenuSelection(psid, choice) {
-    // Re-numbered menu options
     switch (choice) {
         // AI Models
-        case '1': handleAiSelection(psid, 'kaiz'); break;
+        case '1':
+            stateManager.setUserState(psid, 'awaiting_openrouter_model');
+            showOpenRouterMenu(psid);
+            break;
         case '2':
             stateManager.setUserState(psid, 'awaiting_gpt4o_roleplay');
             messengerApi.sendText(psid, "🚀 Advanced GPT-4o selected.\nYou can set a custom roleplay for the AI (e.g., 'You are a helpful pirate'). Or, type 'skip' to use the default.");
@@ -138,38 +166,39 @@ function handleMenuSelection(psid, choice) {
         case '5': handleAiSelection(psid, 'o3mini'); break;
         case '6': handleAiSelection(psid, 'chatgot'); break;
         case '7': handleAiSelection(psid, 'geminipro'); break;
+        case '8': handleAiSelection(psid, 'kaiz'); break;
         
         // Media Tools
-        case '8': handleDownloaderSelection(psid, 'fb'); break;
-        case '9': handleDownloaderSelection(psid, 'yt'); break;
-        case '10': handleDownloaderSelection(psid, 'tik'); break;
-        case '11':
+        case '9': handleDownloaderSelection(psid, 'fb'); break;
+        case '10': handleDownloaderSelection(psid, 'yt'); break;
+        case '11': handleDownloaderSelection(psid, 'tik'); break;
+        case '12':
             stateManager.setUserState(psid, 'awaiting_pinterest_query');
             messengerApi.sendText(psid, "✅ Pinterest Search selected. What do you want to search for?");
             break;
-        case '12':
+        case '13':
             stateManager.setUserState(psid, 'awaiting_ghibli_image');
             messengerApi.sendText(psid, "✅ Ghibli Filter selected. Please send an image you want to transform!");
             break;
-        case '13':
+        case '14':
             stateManager.setUserState(psid, 'awaiting_anime_title');
             messengerApi.sendText(psid, "✅ Anime Heaven selected. What is the title of the anime?");
             break;
-        case '14':
+        case '15':
             stateManager.setUserState(psid, 'awaiting_spotify_query');
             messengerApi.sendText(psid, "✅ Spotify Search selected. What song or artist?");
             break;
 
         // Utility Tools
-        case '15':
+        case '16':
             stateManager.setUserState(psid, 'awaiting_google_query');
             messengerApi.sendText(psid, "✅ Google Search selected. What do you want to search for?");
             break;
-        case '16':
+        case '17':
             stateManager.setUserState(psid, 'awaiting_translate_text');
             messengerApi.sendText(psid, "✅ Google Translate selected. What text would you like to translate?");
             break;
-        case '17':
+        case '18':
             stateManager.setUserState(psid, 'awaiting_humanizer_text');
             messengerApi.sendText(psid, "✅ AI Text Humanizer selected. Please send the text to convert.");
             break;
@@ -179,33 +208,60 @@ function handleMenuSelection(psid, choice) {
     }
 }
 
+function handleOpenRouterModelSelection(psid, choice) {
+    let model;
+    switch (choice) {
+        case '1': model = 'meta-llama/llama-3.3-70b-instruct:free'; break;
+        case '2': model = 'qwen/qwen2.5-vl-72b-instruct:free'; break;
+        case '3': model = 'z.ai/glm-4.5-air:free'; break;
+        case '4': model = 'moonshotai/kimi-k2:free'; break;
+        default:
+            messengerApi.sendText(psid, "Invalid selection. Please choose a number from the list.");
+            return;
+    }
+    stateManager.setUserState(psid, 'awaiting_openrouter_system', { model });
+    messengerApi.sendText(psid, `✅ Model selected.\nNow, please provide a system prompt (e.g., "You are a friendly assistant"). Or, type 'skip' for the default.`);
+}
+
+function handleOpenRouterSystemPrompt(psid, text, model) {
+    const system = text.toLowerCase() === 'skip' ? '' : text;
+    stateManager.setUserState(psid, 'in_chat', { model, system });
+    let modelFriendlyName = model.split('/')[1].split(':')[0];
+    let confirmation = `✅ You are now chatting with OpenRouter's ${modelFriendlyName}.`;
+    if (system) {
+        confirmation += `\n*System Prompt:* "${system}"`;
+    }
+    // Updated to correctly check for the Qwen vision model
+    if (model === 'qwen/qwen2.5-vl-72b-instruct:free') {
+        confirmation += `\nYou can ask questions or send an image!`;
+    }
+    confirmation += `\n\n(Type 'switch' or 'exit' at any time.)`;
+    messengerApi.sendText(psid, confirmation);
+}
+
 function handleGpt4oRoleplay(psid, text) {
     const roleplay = text.toLowerCase() === 'skip' ? '' : text;
-    stateManager.setUserState(psid, 'in_chat', { model: 'gpt4o_advanced', roleplay: roleplay });
+    stateManager.setUserState(psid, 'in_chat', { model: 'gpt4o_advanced', roleplay });
     let confirmation = "✅ You are now chatting with Advanced GPT-4o.";
-    if (roleplay) {
-        confirmation += `\n*Roleplay set:* "${roleplay}"`;
-    }
+    if (roleplay) { confirmation += `\n*Roleplay set:* "${roleplay}"`; }
     confirmation += `\n\nAsk me anything! This AI remembers your conversation.\n(Type 'switch' or 'exit' at any time.)`;
     messengerApi.sendText(psid, confirmation);
 }
 
 function handleAiSelection(psid, model) {
-    let modelName, welcomeMessage;
-    
+    let modelName;
     if (model === 'grok') modelName = 'Grok';
     if (model === 'claude') modelName = 'Claude 3 Haiku';
     if (model === 'o3mini') modelName = 'O3 Mini';
     if (model === 'chatgot') modelName = 'ChatGot.io (w/ Memory)';
     if (model === 'geminipro') modelName = 'Gemini Pro (w/ Memory)';
     if (model === 'kaiz') modelName = 'Kaiz AI (Vision & Memory)';
-
+    let welcomeMessage;
     if (model === 'kaiz') {
-        welcomeMessage = `✅ You are now chatting with ${modelName}. Ask me anything, or send an image!\n\n(Type 'switch' or 'exit' at any time.)`;
+        welcomeMessage = `✅ You are now chatting with ${modelName}. You can ask questions or send an image!\n\n(Type 'switch' or 'exit' at any time.)`;
     } else {
         welcomeMessage = `✅ You are now chatting with ${modelName}. Ask me anything!\n\n(Type 'switch' or 'exit' at any time.)`;
     }
-    
     stateManager.setUserState(psid, 'in_chat', { model });
     messengerApi.sendText(psid, welcomeMessage);
 }
@@ -219,7 +275,7 @@ function handleDownloaderSelection(psid, platform) {
     messengerApi.sendText(psid, `✅ ${platformName} Downloader selected. Please send me the full video URL.`);
 }
 
-function handleInChat(psid, lowerCaseText, originalText, model, roleplay, imageUrl = '') {
+function handleInChat(psid, lowerCaseText, originalText, model, roleplay, system) {
     if (lowerCaseText === 'switch') {
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "🔄 Switching tasks...");
@@ -228,13 +284,12 @@ function handleInChat(psid, lowerCaseText, originalText, model, roleplay, imageU
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "✅ You have exited the chat session. Type 'menu' to start again.");
     } else {
-        toolHandlers.forwardToAI(psid, originalText, model, roleplay, imageUrl);
+        toolHandlers.forwardToAI(psid, originalText, model, roleplay, '', system);
     }
 }
 
 // --- Server and Webhook Setup ---
 app.get('/', (req, res) => res.status(200).send('✅ Multi-Tool Bot is online and healthy.'));
-
 app.get('/webhook', (req, res) => {
     const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
@@ -244,7 +299,6 @@ app.get('/webhook', (req, res) => {
         res.sendStatus(403);
     }
 });
-
 app.post('/webhook', (req, res) => {
     if (req.body.object === 'page') {
         req.body.entry.forEach(entry => {
@@ -263,11 +317,8 @@ app.post('/webhook', (req, res) => {
         res.sendStatus(404);
     }
 });
-
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is listening on port ${PORT}.`));
-
-// --- API KEEPALIVE FUNCTION ---
 async function keepApiKeyActive() {
     try {
         const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
@@ -283,7 +334,6 @@ async function keepApiKeyActive() {
         console.error("❌ Humanizer API ping failed:", error.message);
     }
 }
-
 const threeDaysInMs = 259200000;
 server.on('listening', () => {
     keepApiKeyActive();
