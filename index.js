@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version with Official OpenRouter)
+// index.js (Main Controller - Final Version with GPT-OSS)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -44,7 +44,7 @@ Just type the number of your choice.`;
     await messengerApi.sendText(psid, menuText);
 }
 
-// --- OpenRouter Sub-Menu ---
+// --- UPDATED OpenRouter Sub-Menu ---
 async function showOpenRouterMenu(psid) {
     const menuText = `🧠 OpenRouter Model Selection 🧠
 
@@ -55,7 +55,8 @@ Please choose a model to chat with:
 1. Llama 3.3 (70B)
 2. Qwen 2.5 (72B)
 3. GLM-4.5-air
-4. Kimi K2`;
+4. Kimi K2
+5. GPT-OSS (20B) 🆕`;
     await messengerApi.sendText(psid, menuText);
 }
 
@@ -203,6 +204,7 @@ function handleMenuSelection(psid, choice) {
     }
 }
 
+// --- UPDATED OpenRouter Model Selection Handler ---
 function handleOpenRouterModelSelection(psid, choice) {
     let model;
     switch (choice) {
@@ -210,6 +212,7 @@ function handleOpenRouterModelSelection(psid, choice) {
         case '2': model = 'qwen/qwen2.5-vl-72b-instruct:free'; break;
         case '3': model = 'z.ai/glm-4.5-air:free'; break;
         case '4': model = 'moonshotai/kimi-k2:free'; break;
+        case '5': model = 'openai/gpt-oss-20b:free'; break; // Added new model
         default:
             messengerApi.sendText(psid, "Invalid selection. Please choose a number from the list.");
             return;
