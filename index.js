@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version with Simplified OpenRouter)
+// index.js (Main Controller - Final Version with Official OpenRouter)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -17,8 +17,8 @@ async function showMainMenu(psid) {
 What would you like to do?
 
 --- AI Models ---
-1. OpenRouter (Multiple Models)
-2. GPT-4o (Advanced 🚀)
+1. OpenRouter (Official API)
+2. GPT-4o (Advanced)
 3. Grok
 4. Claude 3 Haiku
 5. O3 Mini
@@ -53,16 +53,9 @@ All models below have conversation memory.
 Please choose a model to chat with:
 
 1. Llama 3.3 (70B)
-   A powerful multilingual model from Meta, great for efficient and detailed conversations.
-
 2. Qwen 2.5 (72B)
-   A strong language model capable of complex reasoning and understanding long text.
-
 3. GLM-4.5-air
-   A powerful model for complex reasoning and tasks, offering a special 'thinking mode'.
-
-4. Kimi K2
-   A massive model optimized for complex, multi-step tasks, coding, and logical reasoning.`;
+4. Kimi K2`;
     await messengerApi.sendText(psid, menuText);
 }
 
@@ -83,10 +76,13 @@ async function handleTextMessage(psid, message) {
     if (userState?.state) {
         switch (userState.state) {
             case 'in_chat':
-                handleInChat(psid, lowerCaseText, messageText, userState.model, userState.roleplay);
+                handleInChat(psid, lowerCaseText, messageText, userState.model, userState.roleplay, userState.system);
                 return;
             case 'awaiting_openrouter_model':
-                handleOpenRouterSelection(psid, lowerCaseText);
+                handleOpenRouterModelSelection(psid, lowerCaseText);
+                return;
+            case 'awaiting_openrouter_system':
+                handleOpenRouterSystemPrompt(psid, messageText, userState.model);
                 return;
             case 'awaiting_gpt4o_roleplay':
                 handleGpt4oRoleplay(psid, messageText);
@@ -138,7 +134,7 @@ async function handleImageAttachment(psid, imageUrl) {
     if (userState?.state === 'in_chat' && (userState.model === 'kaiz' || userState.model === 'qwen/qwen2.5-vl-72b-instruct:free')) {
         let aiName = userState.model === 'kaiz' ? 'Kaiz AI' : 'Qwen 2.5';
         await messengerApi.sendText(psid, `🖼️ Image received! Analyzing with ${aiName}...`);
-        toolHandlers.forwardToAI(psid, "What do you see in this image?", userState.model, '', imageUrl);
+        toolHandlers.forwardToAI(psid, "What do you see in this image?", userState.model, '', imageUrl, userState.system);
     } 
     else if (userState?.state === 'awaiting_ghibli_image') {
         toolHandlers.handleGhibliRequest(psid, imageUrl);
@@ -151,6 +147,7 @@ async function handleImageAttachment(psid, imageUrl) {
 // --- Logic Handlers for Conversation Flow ---
 function handleMenuSelection(psid, choice) {
     switch (choice) {
+        // AI Models
         case '1':
             stateManager.setUserState(psid, 'awaiting_openrouter_model');
             showOpenRouterMenu(psid);
@@ -165,6 +162,8 @@ function handleMenuSelection(psid, choice) {
         case '6': handleAiSelection(psid, 'chatgot'); break;
         case '7': handleAiSelection(psid, 'geminipro'); break;
         case '8': handleAiSelection(psid, 'kaiz'); break;
+        
+        // Media Tools
         case '9': handleDownloaderSelection(psid, 'fb'); break;
         case '10': handleDownloaderSelection(psid, 'yt'); break;
         case '11': handleDownloaderSelection(psid, 'tik'); break;
@@ -184,6 +183,8 @@ function handleMenuSelection(psid, choice) {
             stateManager.setUserState(psid, 'awaiting_spotify_query');
             messengerApi.sendText(psid, "✅ Spotify Search selected. What song or artist?");
             break;
+
+        // Utility Tools
         case '16':
             stateManager.setUserState(psid, 'awaiting_google_query');
             messengerApi.sendText(psid, "✅ Google Search selected. What do you want to search for?");
@@ -202,7 +203,7 @@ function handleMenuSelection(psid, choice) {
     }
 }
 
-function handleOpenRouterSelection(psid, choice) {
+function handleOpenRouterModelSelection(psid, choice) {
     let model;
     switch (choice) {
         case '1': model = 'meta-llama/llama-3.3-70b-instruct:free'; break;
@@ -213,13 +214,19 @@ function handleOpenRouterSelection(psid, choice) {
             messengerApi.sendText(psid, "Invalid selection. Please choose a number from the list.");
             return;
     }
-    stateManager.setUserState(psid, 'in_chat', { model });
+    stateManager.setUserState(psid, 'awaiting_openrouter_system', { model });
+    messengerApi.sendText(psid, `✅ Model selected.\nNow, please provide a system prompt (e.g., "You are a friendly assistant"). Or, type 'skip' for the default.`);
+}
+
+function handleOpenRouterSystemPrompt(psid, text, model) {
+    const system = text.toLowerCase() === 'skip' ? '' : text;
+    stateManager.setUserState(psid, 'in_chat', { model, system });
     let modelFriendlyName = model.split('/')[1].split(':')[0];
-    let confirmation = `✅ You are now chatting with OpenRouter's ${modelFriendlyName}. This AI remembers your conversation.`;
-    if (model.includes('vl')) {
-        confirmation += `\nYou can ask questions or send an image!`;
+    let confirmation = `✅ You are now chatting with OpenRouter's ${modelFriendlyName}.`;
+    if (system) {
+        confirmation += `\n*System Prompt:* "${system}"`;
     }
-    confirmation += `\n\n(Type 'switch' or 'exit' at any time.)`;
+    confirmation += `\n\nAsk me anything! This AI remembers your conversation.\n(Type 'switch' or 'exit' at any time.)`;
     messengerApi.sendText(psid, confirmation);
 }
 
@@ -259,7 +266,7 @@ function handleDownloaderSelection(psid, platform) {
     messengerApi.sendText(psid, `✅ ${platformName} Downloader selected. Please send me the full video URL.`);
 }
 
-function handleInChat(psid, lowerCaseText, originalText, model, roleplay) {
+function handleInChat(psid, lowerCaseText, originalText, model, roleplay, system) {
     if (lowerCaseText === 'switch') {
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "🔄 Switching tasks...");
@@ -268,12 +275,13 @@ function handleInChat(psid, lowerCaseText, originalText, model, roleplay) {
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "✅ You have exited the chat session. Type 'menu' to start again.");
     } else {
-        toolHandlers.forwardToAI(psid, originalText, model, roleplay);
+        toolHandlers.forwardToAI(psid, originalText, model, roleplay, '', system);
     }
 }
 
 // --- Server and Webhook Setup ---
 app.get('/', (req, res) => res.status(200).send('✅ Multi-Tool Bot is online and healthy.'));
+
 app.get('/webhook', (req, res) => {
     const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
@@ -283,6 +291,7 @@ app.get('/webhook', (req, res) => {
         res.sendStatus(403);
     }
 });
+
 app.post('/webhook', (req, res) => {
     if (req.body.object === 'page') {
         req.body.entry.forEach(entry => {
@@ -301,8 +310,11 @@ app.post('/webhook', (req, res) => {
         res.sendStatus(404);
     }
 });
+
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => console.log(`✅ Multi-Tool test bot is listening on port ${PORT}.`));
+
+// --- API KEEPALIVE FUNCTION ---
 async function keepApiKeyActive() {
     try {
         const apiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
@@ -318,6 +330,7 @@ async function keepApiKeyActive() {
         console.error("❌ Humanizer API ping failed:", error.message);
     }
 }
+
 const threeDaysInMs = 259200000;
 server.on('listening', () => {
     keepApiKeyActive();
