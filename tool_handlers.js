@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with Correct OpenRouter Response Handling)
+// tool_handlers.js (Final Version with Official OpenRouter API)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -6,7 +6,84 @@ const secrets = require('./secrets.js');
 
 const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 const hajiApiKey = secrets.HAJI_API_KEY;
-const URL_CHARACTER_LIMIT = 1800;
+const openRouterApiKey = secrets.OPENROUTER_API_KEY;
+
+// --- THIS IS THE NEW, OFFICIAL AI FORWARDING FUNCTION ---
+async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', system = '') {
+    const userState = stateManager.getUserState(psid);
+    const history = userState?.messages || [];
+
+    // For vision models, the content is an array of parts (text and image)
+    let userContent;
+    if (imageUrl && (model === 'kaiz' || model === 'qwen/qwen2.5-vl-72b-instruct:free')) {
+        userContent = [
+            { type: "text", text: query },
+            { type: "image_url", image_url: { url: imageUrl } }
+        ];
+    } else {
+        userContent = query;
+    }
+    
+    // Add the user's new message to the history for the API call
+    stateManager.addMessageToHistory(psid, 'user', userContent);
+    // Get the updated history right after adding the new message
+    const updatedHistory = stateManager.getUserState(psid).messages;
+
+    let apiUrl, headers, data, response;
+
+    try {
+        // --- Official OpenRouter Models ---
+        if (model.includes('/')) {
+            apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
+            headers = {
+                'Authorization': `Bearer ${openRouterApiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://www.facebook.com/YourPageName', // Replace with your Page URL
+                'X-Title': 'Multi-Tool Bot' // Replace with your Bot's Name
+            };
+            
+            let messages = [];
+            if (system) {
+                messages.push({ role: 'system', content: system });
+            }
+            messages = messages.concat(updatedHistory);
+
+            data = {
+                model: model,
+                messages: messages
+            };
+            
+            console.log(`Forwarding to OpenRouter (${model}) via POST...`);
+            response = await axios.post(apiUrl, data, { headers, timeout: 120000 });
+        
+        // --- Fallback for other APIs ---
+        } else {
+            const encodedQuery = encodeURIComponent(query);
+            if (model === 'gpt4o_advanced') {
+                apiUrl = `https://haji-mix-api.gleeze.com/api/gpt4o?ask=${encodedQuery}&uid=${psid}&roleplay=${encodeURIComponent(roleplay)}&api_key=${hajiApiKey}`;
+            } // Add other non-OpenRouter models here if needed
+            response = await axios.get(apiUrl, { timeout: 60000 });
+        }
+        
+        let reply = '';
+        if (model.includes('/')) {
+            reply = response.data?.choices?.[0]?.message?.content;
+        } else {
+            reply = response.data?.answer || response.data?.response;
+        }
+
+        if (reply) {
+            await messengerApi.sendText(psid, reply);
+            stateManager.addMessageToHistory(psid, 'assistant', reply);
+            stateManager.setUserState(psid, 'in_chat', { model, system });
+        } else {
+            await messengerApi.sendText(psid, `Sorry, the AI returned an empty response.`);
+        }
+    } catch (error) {
+        console.error(`Error calling ${model} API:`, error.response?.data || error.message);
+        await messengerApi.sendText(psid, "Sorry, the AI assistant is currently unavailable or the request timed out.");
+    }
+}
 
 async function handleDownloadRequest(psid, url, platform) {
     const encodedUrl = encodeURIComponent(url);
@@ -126,11 +203,6 @@ async function handleGhibliRequest(psid, imageUrl) {
 }
 
 async function handleHumanizerRequest(psid, text) {
-    if (text.length > URL_CHARACTER_LIMIT) {
-        await messengerApi.sendText(psid, `⚠️ Your text is too long for the Humanizer tool (over ${URL_CHARACTER_LIMIT} characters). Please try a shorter text.`);
-        return;
-    }
-    
     await messengerApi.sendText(psid, "✍️ Humanizing your text... Please wait.");
     try {
         const apiUrl = `https://kaiz-apis.gleeze.com/api/humanizer?q=${encodeURIComponent(text)}&apikey=${kaizApiKey}`;
@@ -146,56 +218,6 @@ async function handleHumanizerRequest(psid, text) {
     } finally {
         stateManager.clearUserState(psid);
         await messengerApi.sendText(psid, "Type 'menu' to start a new task.");
-    }
-}
-
-async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '') {
-    if (query.length > URL_CHARACTER_LIMIT) {
-        await messengerApi.sendText(psid, `⚠️ Your message is too long for this AI model (over ${URL_CHARACTER_LIMIT} characters combined). Please try a shorter message.`);
-        return;
-    }
-    
-    let apiUrl, response;
-    const encodedQuery = encodeURIComponent(query);
-
-    try {
-        if (model.includes('/')) {
-            const encodedModel = encodeURIComponent(model);
-            apiUrl = `https://rapido.zetsu.xyz/api/open-router?query=${encodedQuery}&uid=${psid}&model=${encodedModel}`;
-            console.log(`Forwarding to OpenRouter (${model}) via GET: ${apiUrl}`);
-            response = await axios.get(apiUrl, { timeout: 120000 });
-        
-        } else if (model === 'gpt4o_advanced') {
-            const encodedRoleplay = encodeURIComponent(roleplay);
-            apiUrl = `https://haji-mix-api.gleeze.com/api/gpt4o?ask=${encodedQuery}&uid=${psid}&roleplay=${encodedRoleplay}&api_key=${hajiApiKey}`;
-            response = await axios.get(apiUrl, { timeout: 60000 });
-        
-        } else {
-            if (model === 'grok') apiUrl = `https://rapido.zetsu.xyz/api/grok?query=${encodedQuery}`;
-            if (model === 'claude') apiUrl = `https://kaiz-apis.gleeze.com/api/claude3-haiku?ask=${encodedQuery}&apikey=${kaizApiKey}`;
-            if (model === 'o3mini') apiUrl = `https://kaiz-apis.gleeze.com/api/o3-mini?ask=${encodedQuery}&apikey=${kaizApiKey}`;
-            if (model === 'chatgot') apiUrl = `https://kaiz-apis.gleeze.com/api/chatgot-io?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
-            if (model === 'geminipro') apiUrl = `https://kaiz-apis.gleeze.com/api/gemini-pro?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
-            if (model === 'kaiz') {
-                apiUrl = `https://kaiz-apis.gleeze.com/api/kaiz-ai?ask=${encodedQuery}&uid=${psid}&apikey=${kaizApiKey}`;
-                if (imageUrl) { apiUrl += `&image_url=${encodeURIComponent(imageUrl)}`; }
-            }
-            response = await axios.get(apiUrl, { timeout: 60000 });
-        }
-        
-        // --- THIS IS THE CORRECTED LINE ---
-        // It now checks for "answer", "response", AND "result".
-        const reply = response.data?.answer || response.data?.response || response.data?.result;
-
-        if (reply) {
-            await messengerApi.sendText(psid, reply);
-            stateManager.setUserState(psid, 'in_chat', { model, roleplay });
-        } else {
-            await messengerApi.sendText(psid, `Sorry, an error occurred: ${response.data?.error || 'The AI failed to respond.'}`);
-        }
-    } catch (error) {
-        console.error(`Error calling ${model} API:`, error.response?.data || error.message);
-        await messengerApi.sendText(psid, "Sorry, the AI assistant is currently unavailable or the request timed out.");
     }
 }
 
@@ -222,7 +244,7 @@ async function handleAnimeHeavenRequest(psid, title, episode) {
         await messengerApi.sendText(psid, "❌ Sorry, the Anime Heaven service is currently unavailable.");
     } finally {
         stateManager.clearUserState(psid);
-        await messengerApi.sendText(psid, "Type 'menu' to see all options again.");
+        await messengerApi.sendText(psid, "Type 'menu' to start a new task.");
     }
 }
 
