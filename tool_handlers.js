@@ -39,7 +39,7 @@ async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', sys
             headers = {
                 'Authorization': `Bearer ${openRouterApiKey}`,
                 'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://www.facebook.com/YourPageName', // Replace with your Page URL
+                'HTTP-Referer': 'https://www.facebook.com/share/1PAggxknpP/', // Replace with your Page URL
                 'X-Title': 'Multi-Tool Bot' // Replace with your Bot's Name
             };
             
