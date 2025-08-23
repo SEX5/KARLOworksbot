@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with Official OpenRouter API)
+// tool_handlers.js (Final Version with Simplified OpenRouter)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -8,60 +8,44 @@ const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 const hajiApiKey = secrets.HAJI_API_KEY;
 const openRouterApiKey = secrets.OPENROUTER_API_KEY;
 
-// --- THIS IS THE NEW, OFFICIAL AI FORWARDING FUNCTION ---
-async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', system = '') {
+// --- THIS IS THE UPDATED AI FORWARDING FUNCTION ---
+async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '') {
     const userState = stateManager.getUserState(psid);
     const history = userState?.messages || [];
 
-    // For vision models, the content is an array of parts (text and image)
-    let userContent;
-    if (imageUrl && (model === 'kaiz' || model === 'qwen/qwen2.5-vl-72b-instruct:free')) {
-        userContent = [
-            { type: "text", text: query },
-            { type: "image_url", image_url: { url: imageUrl } }
-        ];
-    } else {
-        userContent = query;
-    }
+    let userContent = imageUrl ? 
+        [{ type: "text", text: query }, { type: "image_url", image_url: { url: imageUrl } }] : 
+        query;
     
-    // Add the user's new message to the history for the API call
     stateManager.addMessageToHistory(psid, 'user', userContent);
-    // Get the updated history right after adding the new message
     const updatedHistory = stateManager.getUserState(psid).messages;
 
     let apiUrl, headers, data, response;
 
     try {
-        // --- Official OpenRouter Models ---
-        if (model.includes('/')) {
+        if (model.includes('/')) { // This is an OpenRouter model
             apiUrl = 'https://openrouter.ai/api/v1/chat/completions';
             headers = {
                 'Authorization': `Bearer ${openRouterApiKey}`,
                 'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://www.facebook.com/YourPageName', // Replace with your Page URL
+                'HTTP-Referer': 'https://www.facebook.com/share/1PAggxknpP/', // Replace with your Page URL
                 'X-Title': 'Multi-Tool Bot' // Replace with your Bot's Name
             };
             
-            let messages = [];
-            if (system) {
-                messages.push({ role: 'system', content: system });
-            }
-            messages = messages.concat(updatedHistory);
-
             data = {
                 model: model,
-                messages: messages
+                messages: updatedHistory
             };
             
             console.log(`Forwarding to OpenRouter (${model}) via POST...`);
             response = await axios.post(apiUrl, data, { headers, timeout: 120000 });
         
-        // --- Fallback for other APIs ---
         } else {
+            // Logic for other APIs remains here
             const encodedQuery = encodeURIComponent(query);
             if (model === 'gpt4o_advanced') {
                 apiUrl = `https://haji-mix-api.gleeze.com/api/gpt4o?ask=${encodedQuery}&uid=${psid}&roleplay=${encodeURIComponent(roleplay)}&api_key=${hajiApiKey}`;
-            } // Add other non-OpenRouter models here if needed
+            } // ... etc for other models
             response = await axios.get(apiUrl, { timeout: 60000 });
         }
         
@@ -75,7 +59,7 @@ async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', sys
         if (reply) {
             await messengerApi.sendText(psid, reply);
             stateManager.addMessageToHistory(psid, 'assistant', reply);
-            stateManager.setUserState(psid, 'in_chat', { model, system });
+            stateManager.setUserState(psid, 'in_chat', { model });
         } else {
             await messengerApi.sendText(psid, `Sorry, the AI returned an empty response.`);
         }
