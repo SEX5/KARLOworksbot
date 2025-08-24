@@ -1,4 +1,4 @@
-// user_handler.js
+// user_handler.js (Final Version with Coordinate Check)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
@@ -289,14 +289,34 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID, user
     if (text.toLowerCase() === 'yes' || text.toLowerCase() === 'oo') {
         try {
             await db.addReference(refNumber, sender_psid, modId);
-            const password = generatePassword();
-            const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
-            
-            await sendText(sender_psid, `✅ Thank you! Your order for *${modName}* is confirmed.\n\n🤖 Our automated system has started creating your account. This usually takes 5-10 minutes. An admin will send you the login details here as soon as it's ready.\n\nThank you for your patience! 💙`);
-            
             const userName = await messengerApi.getUserProfile(sender_psid);
-            let adminNotification = `🤖 New automated job (ID: ${jobId}) started!\nUser: ${userName}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}\nEmail: \`${email}\``;
-            await sendText(ADMIN_ID, adminNotification);
+            
+            const mod = await db.getModById(modId);
+            if (mod && mod.x_coordinate && mod.y_coordinate) {
+                // HAPPY PATH: Coordinates exist, create automation job.
+                const password = generatePassword();
+                const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
+                
+                await sendText(sender_psid, lang.getText('automation_started_user', userLang).replace('{modName}', modName));
+                
+                let adminNotification = `🤖 New automated job (ID: ${jobId}) started!\nUser: ${userName}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}\nEmail: \`${email}\``;
+                await sendText(ADMIN_ID, adminNotification);
+
+            } else {
+                // MANUAL PATH: Coordinates are missing, notify admin for manual creation.
+                await sendText(sender_psid, lang.getText('manual_creation_user', userLang));
+                
+                let adminNotification = `
+                    ⚠️ MANUAL CREATION REQUIRED ⚠️
+                    User: ${userName} (${sender_psid})
+                    Mod: ${modName} (ID: ${modId})
+                    Ref No: ${refNumber}
+                    Email: \`${email}\`
+                    Reason: Automation coordinates are missing for this mod.
+                `;
+                await sendText(ADMIN_ID, adminNotification);
+            }
+
         } catch (e) {
             if (e.message === 'Duplicate reference number') {
                 await sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
@@ -318,22 +338,42 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID, user
 async function handleModClarification(sender_psid, text, sendText, ADMIN_ID, userLang = 'en') {
     const { refNumber, email } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
-    const mod = await db.getModById(modId);
-    if (isNaN(modId) || !mod) {
-        await sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
-        return;
-    }
+    
     try {
+        const mod = await db.getModById(modId);
+        if (isNaN(modId) || !mod) {
+            await sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
+            return;
+        }
+
         await db.addReference(refNumber, sender_psid, modId);
-        const password = generatePassword();
-        const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
-        
-        await sendText(sender_psid, `✅ Got it! Your order for *${mod.name}* is confirmed.\n\n🤖 Our automated system has started creating your account. This usually takes 5-10 minutes. An admin will send you the login details here as soon as it's ready.\n\nThank you for your patience! 💙`);
-            
         const userName = await messengerApi.getUserProfile(sender_psid);
-        let adminNotification = `🤖 New automated job (ID: ${jobId}) started!\nUser: ${userName}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}\nEmail: \`${email}\``;
-        await sendText(ADMIN_ID, adminNotification);
-        
+
+        if (mod && mod.x_coordinate && mod.y_coordinate) {
+            // HAPPY PATH: Coordinates exist, create automation job.
+            const password = generatePassword();
+            const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
+
+            await sendText(sender_psid, lang.getText('automation_started_user', userLang).replace('{modName}', mod.name));
+            
+            let adminNotification = `🤖 New automated job (ID: ${jobId}) started!\nUser: ${userName}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}\nEmail: \`${email}\``;
+            await sendText(ADMIN_ID, adminNotification);
+
+        } else {
+            // MANUAL PATH: Coordinates are missing, notify admin for manual creation.
+            await sendText(sender_psid, lang.getText('manual_creation_user', userLang));
+            
+            let adminNotification = `
+                ⚠️ MANUAL CREATION REQUIRED ⚠️
+                User: ${userName} (${sender_psid})
+                Mod: ${mod.name} (ID: ${modId})
+                Ref No: ${refNumber}
+                Email: \`${email}\`
+                Reason: Automation coordinates are missing for this mod.
+            `;
+            await sendText(ADMIN_ID, adminNotification);
+        }
+
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
             await sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
