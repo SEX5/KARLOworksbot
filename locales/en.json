@@ -58,5 +58,9 @@
   "custom_mod_receipt_fail": "🔍 I couldn't clearly read the amount or a valid 13-digit reference number from that receipt. An admin has been notified and will assist you shortly! 🙏",
   "custom_mod_mismatch": "🤔 The amount on the receipt ({amount} PHP) doesn't match the expected price ({price} PHP). An admin has been notified to assist you. Please wait for them to reach out.",
   "custom_mod_success": "✅ Thank you! Your custom mod order has been received and sent to the admin for processing. We'll get back to you shortly! 💙\n(Type 'Menu' to return to the main menu.)",
+  
+  "delivery_success": "🎉 Hooray! Your account has been created successfully!",
+  "delivery_failed_user": "😔 We're sorry, but there was an error creating your account automatically. Don't worry, an admin has been notified and will contact you here shortly to assist you manually. Thank you for your patience!",
+
   "proofs_message": "Here are our proofs of legitimacy! You can view them here:\n\nhttps://www.facebook.com/share/g/15CfJy2SRSt/\n\n(Type 'Menu' to return to the main menu.)"
 }
