@@ -1,8 +1,18 @@
-// user_handler.js (Modified for Language Support)
+// user_handler.js
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
 const lang = require('./language_manager');
+
+// Simple password generator
+function generatePassword(length = 10) {
+    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let retVal = "";
+    for (let i = 0, n = charset.length; i < length; ++i) {
+        retVal += charset.charAt(Math.floor(Math.random() * n));
+    }
+    return retVal;
+}
 
 // --- Main Menu ---
 async function showUserMenu(sender_psid, sendText, userLang = 'en') {
@@ -22,7 +32,6 @@ ${lang.getText('menu_option_5', userLang)}
 ${lang.getText('menu_option_6', userLang)}
 ${lang.getText('menu_suffix', userLang)}`;
     await sendText(sender_psid, menu);
-    // stateManager.clearUserState(sender_psid); // State is cleared in index.js to preserve language
 }
 
 // --- Manual Entry Fallback ---
@@ -147,7 +156,7 @@ async function handleEmailForPurchase(sender_psid, text, sendText, userLang = 'e
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, lang: userLang });
 }
 
-// --- START: New Custom Mod Functions ---
+// --- Custom Mod Functions ---
 async function promptForCustomMod(sender_psid, sendText, userLang = 'en') {
     await sendText(sender_psid, lang.getText('custom_mod_prompt', userLang));
     stateManager.setUserState(sender_psid, 'awaiting_custom_mod_order', { lang: userLang });
@@ -239,8 +248,6 @@ async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
-// --- END: New Custom Mod Functions ---
-
 // --- Receipt Analysis (AI-powered) ---
 async function handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID, userLang = 'en') {
     const precollectedState = stateManager.getUserState(sender_psid);
@@ -281,18 +288,14 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID, user
     const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'yes' || text.toLowerCase() === 'oo') {
         try {
-            const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
-            const claimsText = claimsAdded === 1 ? '1 replacement claim' : `${claimsAdded} replacement claims`;
-            const successMsg = lang.getText('receipt_confirmation_success', userLang)
-                .replace('{modId}', modId)
-                .replace('{claimsText}', claimsText);
-            await sendText(sender_psid, successMsg);
+            await db.addReference(refNumber, sender_psid, modId);
+            const password = generatePassword();
+            const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
+            
+            await sendText(sender_psid, `✅ Thank you! Your order for *${modName}* is confirmed.\n\n🤖 Our automated system has started creating your account. This usually takes 5-10 minutes. An admin will send you the login details here as soon as it's ready.\n\nThank you for your patience! 💙`);
             
             const userName = await messengerApi.getUserProfile(sender_psid);
-            let adminNotification = `✅ New Order Registered!\nUser: ${userName}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}`;
-            if (email) {
-                adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\``;
-            }
+            let adminNotification = `🤖 New automated job (ID: ${jobId}) started!\nUser: ${userName}\nMod: ${modName} (ID: ${modId})\nRef No: ${refNumber}\nEmail: \`${email}\``;
             await sendText(ADMIN_ID, adminNotification);
         } catch (e) {
             if (e.message === 'Duplicate reference number') {
@@ -321,19 +324,16 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID, use
         return;
     }
     try {
-        const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
-        const claimsText = claimsAdded === 1 ? `*1 replacement claim*` : `*${claimsAdded} replacement claims*`;
-        const successMsg = lang.getText('receipt_clarify_success', userLang)
-            .replace('{modId}', modId)
-            .replace('{claimsText}', claimsText);
-        await sendText(sender_psid, successMsg);
+        await db.addReference(refNumber, sender_psid, modId);
+        const password = generatePassword();
+        const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
         
+        await sendText(sender_psid, `✅ Got it! Your order for *${mod.name}* is confirmed.\n\n🤖 Our automated system has started creating your account. This usually takes 5-10 minutes. An admin will send you the login details here as soon as it's ready.\n\nThank you for your patience! 💙`);
+            
         const userName = await messengerApi.getUserProfile(sender_psid);
-        let adminNotification = `✅ New Order Registered!\nUser: ${userName}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}`;
-        if (email) {
-            adminNotification += `\n👤 User Provided Details:\n📧 Email: \`${email}\``;
-        }
+        let adminNotification = `🤖 New automated job (ID: ${jobId}) started!\nUser: ${userName}\nMod: ${mod.name} (ID: ${modId})\nRef No: ${refNumber}\nEmail: \`${email}\``;
         await sendText(ADMIN_ID, adminNotification);
+        
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
             await sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
@@ -424,13 +424,11 @@ async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID, user
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
-// --- Export All Functions ---
 module.exports = {
     showUserMenu,
     handleViewMods,
     handleWantMod,
     handleEmailForPurchase,
-    // handlePasswordForPurchase is removed
     handleReceiptAnalysis,
     handleModConfirmation,
     handleModClarification,
@@ -443,7 +441,6 @@ module.exports = {
     startManualEntryFlow,
     handleManualReference,
     handleManualModSelection,
-    // Add new custom mod functions to exports
     promptForCustomMod,
     handleCustomModOrder,
     handleCustomModReceipt,
