@@ -1,4 +1,4 @@
-// index.js (Refactored to use job_poller.js)
+// index.js (Merged with new features)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -8,8 +8,8 @@ const userHandler = require('./user_handler.js');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
-const jobPoller = require('./job_poller.js'); // Import the new poller
-const { sendText, sendImage } = require('./messenger_api.js'); // Import from the correct file
+const jobPoller = require('./job_poller.js'); 
+const { sendText, sendImage } = require('./messenger_api.js'); 
 
 const app = express();
 app.use(express.json());
@@ -90,6 +90,9 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
                 case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
                 case 'awaiting_delete_ref': return adminHandler.processDeleteRef(sender_psid, messageText, sendText);
+                // --- NEW STATES FOR ADMIN CREATE FLOW ---
+                case 'awaiting_admin_create_email': return adminHandler.promptForAdminCreate_Step2_GetMod(sender_psid, messageText, sendText);
+                case 'awaiting_admin_create_mod_id': return adminHandler.processAdminCreate_Step3_CreateJob(sender_psid, messageText, sendText);
             }
         }
         switch (lowerCaseText) {
@@ -104,6 +107,8 @@ async function handleMessage(sender_psid, webhook_event) {
             case '9': return adminHandler.toggleAdminOnlineStatus(sender_psid, sendText);
             case '10': return adminHandler.promptForReply_Step1_GetPSID(sender_psid, sendText);
             case '11': return adminHandler.handleViewJobs(sender_psid, sendText);
+            // --- NEW COMMAND ---
+            case '12': return adminHandler.promptForAdminCreate_Step1_GetEmail(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
 
