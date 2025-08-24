@@ -14,7 +14,26 @@ async function sendText(psid, text) {
     try {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
     } catch (error) {
-        console.error("Error sending message:", error.response?.data || error.message);
+        console.error("Error sending text message:", error.response?.data || error.message);
+    }
+}
+
+/**
+ * Sends an image message to a user.
+ * @param {string} psid - The user's Page-Scoped ID.
+ * @param {string} imageUrl - The public URL of the image to send.
+ */
+async function sendImage(psid, imageUrl) {
+    const messageData = {
+        recipient: { id: psid },
+        message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } },
+        messaging_type: "RESPONSE"
+    };
+    try { 
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); 
+    }
+    catch (error) { 
+        console.error("Error sending image message:", error.response?.data || error.message); 
     }
 }
 
@@ -44,5 +63,6 @@ async function getUserProfile(psid) {
 
 module.exports = {
     sendText,
+    sendImage,
     getUserProfile
 };
