@@ -1,6 +1,5 @@
-// index.js (Updated to call the new fallback function)
+// index.js (Refactored to use job_poller.js)
 const express = require('express');
-const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const dbManager = require('./database.js');
@@ -9,25 +8,12 @@ const userHandler = require('./user_handler.js');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
+const jobPoller = require('./job_poller.js'); // Import the new poller
+const { sendText, sendImage } = require('./messenger_api.js'); // Import from the correct file
+
 const app = express();
 app.use(express.json());
-const { PAGE_ACCESS_TOKEN, VERIFY_TOKEN, ADMIN_ID } = secrets;
-
-async function sendText(psid, text) {
-    const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
-    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); }
-    catch (error) { console.error("Error sending text message:", error.response?.data || error.message); }
-}
-
-async function sendImage(psid, imageUrl) {
-    const messageData = {
-        recipient: { id: psid },
-        message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } },
-        messaging_type: "RESPONSE"
-    };
-    try { await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); }
-    catch (error) { console.error("Error sending image message:", error.response?.data || error.message); }
-}
+const { VERIFY_TOKEN, ADMIN_ID } = secrets;
 
 async function handleReceiptSubmission(sender_psid, imageUrl) {
     const userState = stateManager.getUserState(sender_psid);
@@ -35,13 +21,11 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
     
     await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
     try {
-        const imageResponse = await axios({ url: imageUrl, responseType: 'arraybuffer' });
+        const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
         
-        // --- THIS IS THE ONLY LINE THAT CHANGES ---
-        // It now calls the new orchestrator function, passing both formats of the image.
         const analysis = await paymentVerifier.analyzeReceiptWithFallback(imageUrl, image_b64);
 
         if (!analysis) throw new Error("AI analysis returned null.");
@@ -72,12 +56,10 @@ async function handleMessage(sender_psid, webhook_event) {
     const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
     const lowerCaseText = messageText?.toLowerCase();
     
-    // --- FIX: MOVED ADMIN CHECK TO THE TOP ---
     const isAdmin = await dbManager.isAdmin(sender_psid);
 
     if (isAdmin) {
         // --- ADMIN LOGIC ---
-        // If the user is an admin, completely bypass language selection and user menus.
         const userStateObj = stateManager.getUserState(sender_psid);
         const state = userStateObj?.state;
 
@@ -121,12 +103,12 @@ async function handleMessage(sender_psid, webhook_event) {
             case '8': return adminHandler.promptForDeleteRef(sender_psid, sendText);
             case '9': return adminHandler.toggleAdminOnlineStatus(sender_psid, sendText);
             case '10': return adminHandler.promptForReply_Step1_GetPSID(sender_psid, sendText);
+            case '11': return adminHandler.handleViewJobs(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
 
     } else {
         // --- USER LOGIC ---
-        // If the user is not an admin, proceed with the language check and regular flow.
         const userStateObj = stateManager.getUserState(sender_psid);
 
         if (!userStateObj || !userStateObj.lang) {
@@ -228,6 +210,10 @@ async function startServer() {
         const PORT = process.env.PORT || 3000;
         const HOST = '0.0.0.0';
         app.listen(PORT, HOST, () => { console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); });
+
+        // Start the background job poller using the new module
+        jobPoller.start();
+
     } catch (error) { console.error("Server failed to start:", error); }
 }
 
