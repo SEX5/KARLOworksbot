@@ -1,13 +1,10 @@
-// payment_verifier.js (With Rapido as Primary, Gemini as Fallback)
+// payment_verifier.js
 const axios = require('axios');
-const fs = require('fs/promises'); // Using fs.promises for async file operations
 const sharp = require('sharp');
-const secrets = require('./secrets.js'); // Keeping this as you requested
+const secrets = require('./secrets.js');
 
 const GEMINI_API_KEY = secrets.GEMINI_API_KEY;
-// --- THIS IS THE UPGRADED MODEL ---
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
-
 
 const ANALYSIS_PROMPT = `
 You are a highly-attentive payment verification assistant. Your task is to analyze payment receipt screenshots to check for legitimacy.
@@ -43,10 +40,8 @@ Respond in this exact JSON format. Do not include any other text, comments, or m
     "verification_status": "APPROVED/FLAGGED/REJECTED",
     "reasoning": "A brief but specific explanation for your decision. Mention any suspicious elements you found (e.g., 'Fonts in amount seem different', 'Reference number is blurry')."
 }
-`; // End of ANALYSIS_PROMPT
+`; 
 
-
-// --- NEW: PROMPT FOR THE RAPIDO API ---
 const RAPIDO_ANALYSIS_PROMPT = `
 You are a payment verification assistant. Analyze the provided GCash receipt screenshot.
 
@@ -65,8 +60,7 @@ Respond ONLY in this exact JSON format. No extra text or markdown.
     "verification_status": "APPROVED/FLAGGED/REJECTED",
     "reasoning": "A brief explanation for your decision."
 }
-`; // End of RAPIDO_ANALYSIS_PROMPT
-
+`;
 
 async function encodeImage(imageBuffer) {
     try {
@@ -82,14 +76,8 @@ async function encodeImage(imageBuffer) {
     }
 }
 
-// Helper function to create a delay
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-/**
- * Sends the analysis request to the Gemini API with retry logic.
- * @param {string} image_b64 - The base64 encoded image data.
- * @returns {Promise<object|null>} The parsed JSON analysis or null on error.
- */
 async function sendGeminiRequest(image_b64) {
     const maxRetries = 3;
     const payload = {
@@ -104,12 +92,12 @@ async function sendGeminiRequest(image_b64) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             console.log(`Sending request to Gemini Vision API (Attempt ${attempt}/${maxRetries})...`);
-            const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 60000 }); // Increased timeout for Pro model
+            const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 60000 });
             
             if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                 let content = response.data.candidates[0].content.parts[0].text;
                 content = content.trim().replace('```json', '').replace('```', '');
-                return JSON.parse(content); // Success, so we exit the loop
+                return JSON.parse(content);
             } else {
                 console.error("Invalid response structure from Gemini API:", response.data);
                 throw new Error("Invalid response structure from Gemini.");
@@ -139,14 +127,6 @@ function createErrorJson(reason) {
     };
 }
 
-
-// --- NEW CODE ADDED: RAPIDO API AS PRIMARY ---
-
-/**
- * Sends the analysis request to the Rapido API.
- * @param {string} imageUrl - The public URL of the image.
- * @returns {Promise<object|null>} The parsed JSON analysis or throws an error on failure.
- */
 async function sendRapidoRequest(imageUrl) {
     console.log("Attempting analysis with Primary API (Rapido)...");
     const encodedPrompt = encodeURIComponent(RAPIDO_ANALYSIS_PROMPT);
@@ -161,59 +141,39 @@ async function sendRapidoRequest(imageUrl) {
         }
 
         const rawText = response.data.response;
-        console.log(`Rapido API Raw Response: ${rawText}`);
-        
         const jsonMatch = rawText.match(/({[\s\S]*})/);
         if (jsonMatch) {
             const parsedJson = JSON.parse(jsonMatch[1]);
-            // Validate that the response contains the expected fields before returning
             if (parsedJson.verification_status && parsedJson.extracted_info) {
                 console.log("Primary API (Rapido) analysis successful.");
                 return parsedJson;
             }
         }
-        // If no valid JSON is found, it's considered a failure.
         throw new Error("Response from Rapido API did not contain a valid JSON object.");
 
     } catch (error) {
         console.error("Primary API (Rapido) request failed:", error.message);
-        throw error; // Re-throw the error to allow the orchestrator to catch it and trigger the fallback.
+        throw error;
     }
 }
 
-
-/**
- * Main analysis function. Tries the Primary (Rapido) API first, then falls back to the Secondary (Gemini) API.
- * @param {string} imageUrl - The public URL of the image (for Rapido).
- * @param {string} image_b64 - The base64 encoded image (for Gemini).
- * @returns {Promise<object|null>} The final analysis object.
- */
 async function analyzeReceiptWithFallback(imageUrl, image_b64) {
     try {
-        // Attempt to get a result from the primary API first.
         const primaryResult = await sendRapidoRequest(imageUrl);
         return primaryResult;
     } catch (primaryError) {
-        // If the primary API fails for any reason, log it and proceed to the fallback.
         console.warn("Primary API (Rapido) failed. Proceeding to Fallback API (Gemini)...");
         try {
-            // Attempt to get a result from the fallback API.
             const fallbackResult = await sendGeminiRequest(image_b64);
             return fallbackResult;
         } catch (fallbackError) {
-            // If the fallback also fails, log the error and return a final error object.
             console.error("Fallback API (Gemini) also failed. Analysis could not be completed.");
             return createErrorJson("Both primary and fallback analysis APIs failed.");
         }
     }
 }
 
-
 module.exports = {
     encodeImage,
-    sendGeminiRequest,
-    createErrorJson,
-    // --- NEW EXPORTS ADDED ---
-    sendRapidoRequest,
     analyzeReceiptWithFallback
 };
