@@ -1,10 +1,9 @@
-// admin_handler.js (Final & Complete)
+// admin_handler.js
 const db = require('./database');
 const stateManager = require('./state_manager');
 
 const REFERENCES_PER_PAGE = 10;
 
-// --- MENU MODIFIED to include Type 10 ---
 async function showAdminMenu(sender_psid, sendText) {
     const adminInfo = await db.getAdminInfo();
     const onlineStatus = adminInfo && adminInfo.is_online ? '✅ Online' : '❌ Offline';
@@ -21,12 +20,12 @@ Type 7: ➕ Add a new mod
 Type 8: 🗑️ Delete a reference number
 Type 9: Toggle Online/Offline Status (Currently: ${onlineStatus})
 Type 10: 💬 Reply to a user with account details
+Type 11: 🤖 View account creation jobs
 `;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
 }
 
-// --- Online/Offline Toggle ---
 async function toggleAdminOnlineStatus(sender_psid, sendText) {
     try {
         const adminInfo = await db.getAdminInfo();
@@ -40,7 +39,6 @@ async function toggleAdminOnlineStatus(sender_psid, sendText) {
     stateManager.clearUserState(sender_psid);
 }
 
-// --- View References ---
 async function handleViewReferences(sender_psid, sendText, page = 1) {
     const allRefs = await db.getAllReferences();
     if (!allRefs || allRefs.length === 0) {
@@ -83,24 +81,30 @@ async function processEditMod_Step2_AskDetail(sender_psid, text, sendText) {
     const modId = parseInt(text.trim());
     const mod = await db.getModById(modId);
     if (isNaN(modId) || !mod) { await sendText(sender_psid, "Invalid Mod ID. Please try again or type 'Menu' to cancel."); return; }
-    const response = `Editing Mod ${mod.id} (${mod.name}).\n\nCurrent Details:\n- Name: ${mod.name}\n- Description: ${mod.description}\n- Price: ${mod.price}\n- Image: ${mod.image_url}\n- Max Claims: ${mod.default_claims_max}\n\nWhat would you like to change? Reply with 'name', 'description', 'price', 'image', or 'claims'.`;
+    const response = `Editing Mod ${mod.id} (${mod.name}).\n\nCurrent Details:\n- Name: ${mod.name}\n- Description: ${mod.description}\n- Price: ${mod.price}\n- Image: ${mod.image_url}\n- Max Claims: ${mod.default_claims_max}\n- X Coordinate: ${mod.x_coordinate || 'Not Set'}\n- Y Coordinate: ${mod.y_coordinate || 'Not Set'}\n\nWhat would you like to change? Reply with 'name', 'description', 'price', 'image', 'claims', 'x', or 'y'.`;
     await sendText(sender_psid, response);
     stateManager.setUserState(sender_psid, 'awaiting_edit_mod_detail_choice', { modId });
 }
-async function processEditMod_Step3_AskValue(sender_psid, text, sendText) { const detailToChange = text.trim().toLowerCase(); const { modId } = stateManager.getUserState(sender_psid); if (!['name', 'description', 'price', 'image', 'claims'].includes(detailToChange)) { await sendText(sender_psid, "Invalid choice. Please reply with 'name', 'description', 'price', 'image', or 'claims'."); return; } await sendText(sender_psid, `What is the new ${detailToChange} for Mod ${modId}?`); stateManager.setUserState(sender_psid, 'awaiting_edit_mod_new_value', { modId, detailToChange }); }
+async function processEditMod_Step3_AskValue(sender_psid, text, sendText) { const detailToChange = text.trim().toLowerCase(); const { modId } = stateManager.getUserState(sender_psid); if (!['name', 'description', 'price', 'image', 'claims', 'x', 'y'].includes(detailToChange)) { await sendText(sender_psid, "Invalid choice. Please reply with 'name', 'description', 'price', 'image', 'claims', 'x', or 'y'."); return; } await sendText(sender_psid, `What is the new ${detailToChange} for Mod ${modId}?`); stateManager.setUserState(sender_psid, 'awaiting_edit_mod_new_value', { modId, detailToChange }); }
 async function processEditMod_Step4_SaveValue(sender_psid, text, sendText) {
     const newValue = text.trim();
     const { modId, detailToChange } = stateManager.getUserState(sender_psid);
     const detailsToUpdate = {};
     let fieldName = detailToChange;
     let valueToSave = newValue;
-
+    
     if (detailToChange === 'image') fieldName = 'image_url';
     if (detailToChange === 'claims') fieldName = 'default_claims_max';
+    if (detailToChange === 'x') fieldName = 'x_coordinate';
+    if (detailToChange === 'y') fieldName = 'y_coordinate';
 
-    if (detailToChange === 'price' || detailToChange === 'claims') {
-        const numValue = detailToChange === 'price' ? parseFloat(valueToSave) : parseInt(valueToSave);
-        if (isNaN(numValue) || numValue < 0) {
+    if (['price', 'claims', 'x', 'y'].includes(detailToChange)) {
+        const numValue = (detailToChange === 'price' || detailToChange === 'x' || detailToChange === 'y') ? parseFloat(valueToSave) : parseInt(valueToSave);
+        if (isNaN(numValue)) {
+            await sendText(sender_psid, `Invalid number format for ${detailToChange}.`);
+            return;
+        }
+        if (numValue < 0 && (detailToChange === 'price' || detailToChange === 'claims')) {
             await sendText(sender_psid, `Invalid number for ${detailToChange}. Please enter a positive number.`);
             stateManager.setUserState(sender_psid, 'awaiting_edit_mod_new_value', { modId, detailToChange });
             return;
@@ -118,7 +122,7 @@ async function processEditMod_Step4_SaveValue(sender_psid, text, sendText) {
         stateManager.clearUserState(sender_psid);
     }
 }
-async function processEditMod_Step5_Continue(sender_psid, text, sendText) { const choice = text.trim().toLowerCase(); const { modId } = stateManager.getUserState(sender_psid); if (choice === 'yes') { const mod = await db.getModById(modId); const response = `What else would you like to change for Mod ${mod.id}?\nReply with 'name', 'description', 'price', 'image'.`; await sendText(sender_psid, response); stateManager.setUserState(sender_psid, 'awaiting_edit_mod_detail_choice', { modId }); } else { await sendText(sender_psid, "Finished editing Mod. Returning to the admin menu."); await showAdminMenu(sender_psid, sendText); } }
+async function processEditMod_Step5_Continue(sender_psid, text, sendText) { const choice = text.trim().toLowerCase(); const { modId } = stateManager.getUserState(sender_psid); if (choice === 'yes') { const mod = await db.getModById(modId); const response = `What else would you like to change for Mod ${mod.id}?\nReply with 'name', 'description', 'price', 'image', 'claims', 'x', or 'y'.`; await sendText(sender_psid, response); stateManager.setUserState(sender_psid, 'awaiting_edit_mod_detail_choice', { modId }); } else { await sendText(sender_psid, "Finished editing Mod. Returning to the admin menu."); await showAdminMenu(sender_psid, sendText); } }
 
 // --- Add Reference ---
 async function promptForAddRef_Step1_GetRef(sender_psid, sendText) { await sendText(sender_psid, "Please provide the 13-digit GCash reference number you want to add."); stateManager.setUserState(sender_psid, 'awaiting_add_ref_number'); }
@@ -180,15 +184,11 @@ async function processDeleteRef(sender_psid, text, sendText) {
     }
 }
 
-// --- NEW FEATURE FUNCTIONS (MULTI-LINE FORMAT) ---
-
-// Step 1: Ask for the target user's PSID
+// --- Reply to User ---
 async function promptForReply_Step1_GetPSID(sender_psid, sendText) {
     await sendText(sender_psid, "Please enter the Page-Scoped ID (PSID) of the user you want to reply to.");
     stateManager.setUserState(sender_psid, 'awaiting_reply_psid');
 }
-
-// Step 2: Get the PSID, then ask for the USERNAME
 async function promptForReply_Step2_GetUsername(sender_psid, text, sendText) {
     const targetPsid = text.trim();
     if (!/^\d{15,17}$/.test(targetPsid)) {
@@ -198,8 +198,6 @@ async function promptForReply_Step2_GetUsername(sender_psid, text, sendText) {
     await sendText(sender_psid, `✅ PSID received. Now, please enter the USERNAME (e.g., email@example.com) for the account.`);
     stateManager.setUserState(sender_psid, 'awaiting_reply_username', { targetPsid });
 }
-
-// Step 3: Get the USERNAME, then ask for the PASSWORD
 async function promptForReply_Step3_GetPassword(sender_psid, text, sendText) {
     const username = text.trim();
     const { targetPsid } = stateManager.getUserState(sender_psid);
@@ -207,8 +205,6 @@ async function promptForReply_Step3_GetPassword(sender_psid, text, sendText) {
     await sendText(sender_psid, `✅ Username noted. Now, please enter the PASSWORD for the account.`);
     stateManager.setUserState(sender_psid, 'awaiting_reply_password', { targetPsid, username });
 }
-
-// Step 4: Get the PASSWORD, send the final message, and confirm with the admin
 async function processReply_Step4_Send(sender_psid, text, sendText) {
     const password = text.trim();
     const { targetPsid, username } = stateManager.getUserState(sender_psid);
@@ -232,6 +228,42 @@ Thank you for your trust! Enjoy the game! 💙
         await sendText(sender_psid, `❌ Failed to send the message to user ${targetPsid}. They may have blocked the page or the PSID is incorrect.`);
     }
     
+    stateManager.clearUserState(sender_psid);
+}
+
+// --- View Creation Jobs ---
+async function handleViewJobs(sender_psid, sendText) {
+    try {
+        const jobs = await db.getCreationJobs();
+        if (!jobs || jobs.length === 0) {
+            return sendText(sender_psid, "No account creation jobs found.");
+        }
+        
+        let response = "--- Recent Account Creation Jobs ---\n\n";
+        jobs.forEach(job => {
+            const statusEmoji = {
+                pending: '⏳',
+                processing: '⚙️',
+                completed: '✅',
+                failed: '❌',
+                delivered: '🎉',
+                failed_notified: '📮'
+            }[job.status] || '❓';
+            
+            response += `${statusEmoji} Job ID: ${job.job_id}\n`;
+            response += `   User: ${job.user_psid}\n`;
+            response += `   Status: ${job.status}\n`;
+            if (job.status !== 'pending' && job.status !== 'processing') {
+                const result = (job.result_message || 'No result message.').substring(0, 200);
+                response += `   Result: ${result}...\n`;
+            }
+            response += '\n';
+        });
+        await sendText(sender_psid, response);
+
+    } catch (e) {
+        await sendText(sender_psid, `Error fetching jobs: ${e.message}`);
+    }
     stateManager.clearUserState(sender_psid);
 }
 
@@ -261,5 +293,6 @@ module.exports = {
     promptForReply_Step1_GetPSID,
     promptForReply_Step2_GetUsername,
     promptForReply_Step3_GetPassword,
-    processReply_Step4_Send
+    processReply_Step4_Send,
+    handleViewJobs
 };
