@@ -6,8 +6,18 @@ let pool;
 
 function getDb() {
     if (!pool) {
+        // =================================================================
+        // === THIS IS THE SPECIAL DEBUGGING LINE TO HELP US FIND THE ERROR ===
+        console.log("DEBUG: The URL my code is trying to use is:", secrets.DATABASE_URL);
+        // =================================================================
+
+        // This check will stop the app if the URL is missing
+        if (!secrets.DATABASE_URL) {
+            console.error("FATAL ERROR: DATABASE_URL is not found in secrets.js! The file might be missing or has a syntax error.");
+            process.exit(1); // Stop the application
+        }
+
         pool = new Pool({
-            // This reads the DATABASE_URL from secrets.js
             connectionString: secrets.DATABASE_URL,
             ssl: {
                 rejectUnauthorized: false
@@ -70,11 +80,9 @@ async function setupDatabase() {
 }
 
 // --- All other functions in this file remain exactly the same ---
-// --- Job Polling Functions ---
 async function getActionableJobs() { const query = `SELECT * FROM creation_jobs WHERE status = 'completed' OR status = 'failed'`; const res = await getDb().query(query); return res.rows; }
 async function updateJobStatus(jobId, newStatus) { const query = `UPDATE creation_jobs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE job_id = $2`; await getDb().query(query, [newStatus, jobId]); }
 async function getStalePendingJobs(minutes = 20) { const query = ` SELECT job_id FROM creation_jobs WHERE status = 'pending' AND created_at < NOW() - INTERVAL '${minutes} minutes' `; const res = await getDb().query(query); return res.rows; }
-// --- Other Database Functions ---
 async function deleteReference(refNumber) { const res = await getDb().query('DELETE FROM "references" WHERE ref_number = $1', [refNumber]); return res.rowCount; }
 async function setAdminOnlineStatus(isOnline) { await getDb().query('UPDATE admins SET is_online = $1', [isOnline]); }
 async function createAccountCreationJob(user_psid, email, password, modId) { const query = 'INSERT INTO creation_jobs (user_psid, email, password, mod_id) VALUES ($1, $2, $3, $4) RETURNING job_id'; const res = await getDb().query(query, [user_psid, email, password, modId]); return res.rows[0].job_id; }
