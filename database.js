@@ -1,13 +1,14 @@
 // database.js
 const { Pool } = require('pg');
-const secrets = require('./secrets.js');
+const secrets = require('./secrets.js'); // Reads your secrets.js file
 
 let pool;
 
 function getDb() {
     if (!pool) {
         pool = new Pool({
-            connectionString: secrets.NEON_DATABASE_URL,
+            // This reads the DATABASE_URL from secrets.js
+            connectionString: secrets.DATABASE_URL,
             ssl: {
                 rejectUnauthorized: false
             }
@@ -19,7 +20,7 @@ function getDb() {
 async function setupDatabase() {
     const client = await getDb().connect();
     try {
-        console.log('Connecting to Neon PostgreSQL database...');
+        console.log('Connecting to Supabase PostgreSQL database...');
         await client.query('BEGIN');
         
         await client.query(`CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY, gcash_number TEXT, is_online BOOLEAN DEFAULT FALSE)`);
@@ -42,11 +43,11 @@ async function setupDatabase() {
         `);
 
         await client.query('COMMIT');
-        console.log('Database tables are ready on Neon.');
+        console.log('Database tables are ready on Supabase.');
 
         try {
             await client.query('ALTER TABLE admins ADD COLUMN is_online BOOLEAN DEFAULT FALSE');
-            console.log('Successfully added "is_online" column to admins table.');
+            console.log('Verified "is_online" column in admins table.');
         } catch (e) {
             if (e.code !== '42701') { throw e; }
         }
@@ -54,63 +55,30 @@ async function setupDatabase() {
         try {
             await client.query('ALTER TABLE mods ADD COLUMN x_coordinate REAL');
             await client.query('ALTER TABLE mods ADD COLUMN y_coordinate REAL');
-            console.log('Successfully added coordinate columns to mods table.');
+            console.log('Verified coordinate columns in mods table.');
         } catch (e) {
              if (e.code !== '42701') { throw e; }
         }
 
     } catch (error) {
         await client.query('ROLLBACK');
-        console.error('FATAL: Could not set up Neon database:', error.message);
+        console.error('FATAL: Could not set up Supabase database:', error.message);
         throw error;
     } finally {
         client.release();
     }
 }
 
+// --- All other functions in this file remain exactly the same ---
 // --- Job Polling Functions ---
-async function getActionableJobs() {
-    const query = `SELECT * FROM creation_jobs WHERE status = 'completed' OR status = 'failed'`;
-    const res = await getDb().query(query);
-    return res.rows;
-}
-
-async function updateJobStatus(jobId, newStatus) {
-    const query = `UPDATE creation_jobs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE job_id = $2`;
-    await getDb().query(query, [newStatus, jobId]);
-}
-
-async function getStalePendingJobs(minutes = 20) {
-    const query = `
-        SELECT job_id FROM creation_jobs 
-        WHERE status = 'pending' AND created_at < NOW() - INTERVAL '${minutes} minutes'
-    `;
-    const res = await getDb().query(query);
-    return res.rows;
-}
-
+async function getActionableJobs() { const query = `SELECT * FROM creation_jobs WHERE status = 'completed' OR status = 'failed'`; const res = await getDb().query(query); return res.rows; }
+async function updateJobStatus(jobId, newStatus) { const query = `UPDATE creation_jobs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE job_id = $2`; await getDb().query(query, [newStatus, jobId]); }
+async function getStalePendingJobs(minutes = 20) { const query = ` SELECT job_id FROM creation_jobs WHERE status = 'pending' AND created_at < NOW() - INTERVAL '${minutes} minutes' `; const res = await getDb().query(query); return res.rows; }
 // --- Other Database Functions ---
-async function deleteReference(refNumber) {
-    const res = await getDb().query('DELETE FROM "references" WHERE ref_number = $1', [refNumber]);
-    return res.rowCount;
-}
-
-async function setAdminOnlineStatus(isOnline) {
-    await getDb().query('UPDATE admins SET is_online = $1', [isOnline]);
-}
-
-async function createAccountCreationJob(user_psid, email, password, modId) {
-    const query = 'INSERT INTO creation_jobs (user_psid, email, password, mod_id) VALUES ($1, $2, $3, $4) RETURNING job_id';
-    const res = await getDb().query(query, [user_psid, email, password, modId]);
-    return res.rows[0].job_id;
-}
-
-async function getCreationJobs() {
-    const query = 'SELECT job_id, user_psid, status, result_message FROM creation_jobs ORDER BY created_at DESC LIMIT 15';
-    const res = await getDb().query(query);
-    return res.rows;
-}
-
+async function deleteReference(refNumber) { const res = await getDb().query('DELETE FROM "references" WHERE ref_number = $1', [refNumber]); return res.rowCount; }
+async function setAdminOnlineStatus(isOnline) { await getDb().query('UPDATE admins SET is_online = $1', [isOnline]); }
+async function createAccountCreationJob(user_psid, email, password, modId) { const query = 'INSERT INTO creation_jobs (user_psid, email, password, mod_id) VALUES ($1, $2, $3, $4) RETURNING job_id'; const res = await getDb().query(query, [user_psid, email, password, modId]); return res.rows[0].job_id; }
+async function getCreationJobs() { const query = 'SELECT job_id, user_psid, status, result_message FROM creation_jobs ORDER BY created_at DESC LIMIT 15'; const res = await getDb().query(query); return res.rows; }
 async function isAdmin(userId) { const res = await getDb().query('SELECT * FROM admins WHERE user_id = $1', [userId]); return res.rows[0] || null; }
 async function getAdminInfo() { const res = await getDb().query('SELECT * FROM admins LIMIT 1'); return res.rows[0] || null; }
 async function updateAdminInfo(userId, gcashNumber) { await getDb().query('INSERT INTO admins (user_id, gcash_number) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET gcash_number = $2', [userId, gcashNumber]); }
@@ -118,16 +86,7 @@ async function getAllReferences() { const res = await getDb().query('SELECT r.re
 async function addBulkAccounts(modId, accounts) { const client = await getDb().connect(); try { await client.query('BEGIN'); for (const acc of accounts) { await client.query('INSERT INTO accounts (mod_id, username, password) VALUES ($1, $2, $3)', [modId, acc.username, acc.password]); } await client.query('COMMIT'); } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); } }
 async function updateModDetails(modId, details) { const fields = Object.keys(details).map((k, i) => `${k} = $${i + 1}`).join(', '); const values = Object.values(details); await getDb().query(`UPDATE mods SET ${fields} WHERE id = $${values.length + 1}`, [...values, modId]); }
 async function updateReferenceMod(ref, newModId) { await getDb().query('UPDATE "references" SET mod_id = $1 WHERE ref_number = $2', [newModId, ref]); }
-async function addReference(ref, userId = 'ADMIN_ADDED', modId) {
-    const mod = await getModById(modId);
-    if (!mod) {
-        throw new Error(`Mod with ID ${modId} not found when trying to add reference.`);
-    }
-    const claimsMax = mod.default_claims_max || 1; 
-    const res = await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId, claimsMax]);
-    if (res.rowCount === 0) { throw new Error('Duplicate reference number'); }
-    return claimsMax;
-}
+async function addReference(ref, userId = 'ADMIN_ADDED', modId) { const mod = await getModById(modId); if (!mod) { throw new Error(`Mod with ID ${modId} not found when trying to add reference.`); } const claimsMax = mod.default_claims_max || 1;  const res = await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId, claimsMax]); if (res.rowCount === 0) { throw new Error('Duplicate reference number'); } return claimsMax; }
 async function getMods() { const res = await getDb().query('SELECT m.id, m.name, m.description, m.price, m.image_url, m.default_claims_max, (SELECT COUNT(*) FROM accounts WHERE mod_id = m.id AND is_available = TRUE) as stock FROM mods m ORDER BY m.id'); return res.rows; }
 async function getModById(modId) { const res = await getDb().query('SELECT * FROM mods WHERE id = $1', [modId]); return res.rows[0] || null; }
 async function getReference(refNumber) { const res = await getDb().query('SELECT r.*, m.name as mod_name FROM "references" r JOIN mods m ON r.mod_id = m.id WHERE r.ref_number = $1', [refNumber]); return res.rows[0] || null; }
@@ -137,29 +96,4 @@ async function useClaim(refNumber) { await getDb().query('UPDATE "references" SE
 async function addMod(id, name, description, price, imageUrl, defaultClaimsMax) { await getDb().query('INSERT INTO mods (id, name, description, price, image_url, default_claims_max) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(id) DO NOTHING', [id, name, description, price, imageUrl, defaultClaimsMax]); }
 async function getModsByPrice(price) { const res = await getDb().query('SELECT * FROM mods WHERE price BETWEEN $1 AND $2', [price - 0.01, price + 0.01]); return res.rows; }
 
-module.exports = {
-    setupDatabase,
-    getActionableJobs,
-    updateJobStatus,
-    getStalePendingJobs,
-    deleteReference,
-    setAdminOnlineStatus,
-    createAccountCreationJob,
-    getCreationJobs,
-    isAdmin,
-    getAdminInfo,
-    updateAdminInfo,
-    getAllReferences,
-    addBulkAccounts,
-    updateModDetails,
-    updateReferenceMod,
-    addReference,
-    getMods,
-    getModById,
-    getReference,
-    getAvailableAccount,
-    claimAccount,
-    useClaim,
-    addMod,
-    getModsByPrice,
-};
+module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, };
