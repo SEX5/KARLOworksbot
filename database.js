@@ -1,17 +1,15 @@
 // database.js
 const { Pool } = require('pg');
-const secrets = require('./secrets.js'); // Reads your secrets.js file
+const secrets = require('./secrets.js'); // This line reads your secrets.js file
 
 let pool;
 
 function getDb() {
     if (!pool) {
-        // =================================================================
-        // === THIS IS THE SPECIAL DEBUGGING LINE TO HELP US FIND THE ERROR ===
+        // This debug line will tell us if the secrets.js file is being read correctly.
         console.log("DEBUG: The URL my code is trying to use is:", secrets.DATABASE_URL);
-        // =================================================================
 
-        // This check will stop the app if the URL is missing
+        // This check will stop the app if the URL is missing from secrets.js
         if (!secrets.DATABASE_URL) {
             console.error("FATAL ERROR: DATABASE_URL is not found in secrets.js! The file might be missing or has a syntax error.");
             process.exit(1); // Stop the application
@@ -32,54 +30,17 @@ async function setupDatabase() {
     try {
         console.log('Connecting to Supabase PostgreSQL database...');
         await client.query('BEGIN');
-        
         await client.query(`CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY, gcash_number TEXT, is_online BOOLEAN DEFAULT FALSE)`);
         await client.query(`CREATE TABLE IF NOT EXISTS mods (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, price REAL DEFAULT 0, image_url TEXT, default_claims_max INTEGER DEFAULT 3, x_coordinate REAL, y_coordinate REAL)`);
         await client.query(`CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, mod_id INTEGER NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, is_available BOOLEAN DEFAULT TRUE, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
-        await client.query(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
-        
-        await client.query(`
-            CREATE TABLE IF NOT EXISTS creation_jobs (
-                job_id SERIAL PRIMARY KEY,
-                user_psid TEXT NOT NULL,
-                email TEXT NOT NULL,
-                password TEXT NOT NULL,
-                mod_id INTEGER NOT NULL,
-                status VARCHAR(20) DEFAULT 'pending',
-                result_message TEXT,
-                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-
+        await client.query(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp TIMESTPTZ DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
+        await client.query(`CREATE TABLE IF NOT EXISTS creation_jobs ( job_id SERIAL PRIMARY KEY, user_psid TEXT NOT NULL, email TEXT NOT NULL, password TEXT NOT NULL, mod_id INTEGER NOT NULL, status VARCHAR(20) DEFAULT 'pending', result_message TEXT, created_at TIMESTPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTPTZ DEFAULT CURRENT_TIMESTAMP )`);
         await client.query('COMMIT');
         console.log('Database tables are ready on Supabase.');
-
-        try {
-            await client.query('ALTER TABLE admins ADD COLUMN is_online BOOLEAN DEFAULT FALSE');
-            console.log('Verified "is_online" column in admins table.');
-        } catch (e) {
-            if (e.code !== '42701') { throw e; }
-        }
-        
-        try {
-            await client.query('ALTER TABLE mods ADD COLUMN x_coordinate REAL');
-            await client.query('ALTER TABLE mods ADD COLUMN y_coordinate REAL');
-            console.log('Verified coordinate columns in mods table.');
-        } catch (e) {
-             if (e.code !== '42701') { throw e; }
-        }
-
-    } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('FATAL: Could not set up Supabase database:', error.message);
-        throw error;
-    } finally {
-        client.release();
-    }
+        try { await client.query('ALTER TABLE admins ADD COLUMN is_online BOOLEAN DEFAULT FALSE'); console.log('Verified "is_online" column in admins table.'); } catch (e) { if (e.code !== '42701') { throw e; } }
+        try { await client.query('ALTER TABLE mods ADD COLUMN x_coordinate REAL'); await client.query('ALTER TABLE mods ADD COLUMN y_coordinate REAL'); console.log('Verified coordinate columns in mods table.'); } catch (e) { if (e.code !== '42701') { throw e; } }
+    } catch (error) { await client.query('ROLLBACK'); console.error('FATAL: Could not set up Supabase database:', error.message); throw error; } finally { client.release(); }
 }
-
-// --- All other functions in this file remain exactly the same ---
 async function getActionableJobs() { const query = `SELECT * FROM creation_jobs WHERE status = 'completed' OR status = 'failed'`; const res = await getDb().query(query); return res.rows; }
 async function updateJobStatus(jobId, newStatus) { const query = `UPDATE creation_jobs SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE job_id = $2`; await getDb().query(query, [newStatus, jobId]); }
 async function getStalePendingJobs(minutes = 20) { const query = ` SELECT job_id FROM creation_jobs WHERE status = 'pending' AND created_at < NOW() - INTERVAL '${minutes} minutes' `; const res = await getDb().query(query); return res.rows; }
