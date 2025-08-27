@@ -1,4 +1,4 @@
-// tool_handlers.js (Final Version with Official OpenRouter API)
+// tool_handlers.js (Final Version with Enhanced Google Search and Image Support)
 const axios = require('axios');
 const stateManager = require('./state_manager.js');
 const messengerApi = require('./messenger_api.js');
@@ -8,7 +8,7 @@ const kaizApiKey = "732ce71f-4761-474d-adf2-5cd2d315ad18";
 const hajiApiKey = secrets.HAJI_API_KEY;
 const openRouterApiKey = secrets.OPENROUTER_API_KEY;
 
-// --- THIS IS THE NEW, OFFICIAL AI FORWARDING FUNCTION ---
+// THIS IS THE NEW, OFFICIAL AI FORWARDING FUNCTION
 async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', system = '') {
     const userState = stateManager.getUserState(psid);
     // Get the conversation history, or start with an empty array
@@ -16,11 +16,16 @@ async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', sys
 
     // For vision models, the content is an array of parts (text and image)
     let userContent;
-    if (imageUrl && (model === 'kaiz' || model === 'qwen/qwen2.5-vl-72b-instruct:free')) {
-        userContent = [
-            { type: "text", text: query },
-            { type: "image_url", image_url: { url: imageUrl } }
-        ];
+    if (imageUrl && (model.includes('/') || model === 'kaiz')) {
+        if (model.includes('qwen') || model.includes('glm')) {
+            userContent = [
+                { type: "text", text: query },
+                { type: "image_url", image_url: { url: imageUrl } }
+            ];
+        } else {
+            // For other models that don't support image URLs directly, describe the image
+            userContent = `I've sent you an image. Please analyze it. The image URL is: ${imageUrl}\n\nHere's my question: ${query}`;
+        }
     } else {
         userContent = query;
     }
@@ -53,7 +58,12 @@ async function forwardToAI(psid, query, model, roleplay = '', imageUrl = '', sys
 
             data = {
                 model: model,
-                messages: messages
+                messages: messages,
+                // For models that support vision parameters
+                extra_body: {
+                    max_tokens: 4096,
+                    temperature: model.includes('deepseek') ? 0.1 : 0.7,
+                }
             };
             
             console.log(`Forwarding to OpenRouter (${model}) via POST...`);
@@ -123,27 +133,62 @@ async function handleDownloadRequest(psid, url, platform) {
     }
 }
 
+// Enhanced Google Search with AI analysis
 async function handleGoogleSearch(psid, query) {
     await messengerApi.sendText(psid, `🔍 Searching Google for "${query}"...`);
     try {
         const response = await axios.get(`https://rapido.zetsu.xyz/api/google?q=${encodeURIComponent(query)}`);
         if (response.data?.results?.length > 0) {
+            // Prepare results for AI analysis
+            const resultsText = response.data.results.slice(0, 5).map(res => 
+                `Title: ${res.title}\nURL: ${res.link}\nDescription: ${res.snippet}\n\n`
+            ).join('');
+            
+            // Analyze using the new API endpoint
+            await messengerApi.sendText(psid, "🧠 Analyzing search results...");
+            const analysisResponse = await axios.get(
+                `https://rapido.zetsu.xyz/api/gpt4-1?query=Analyze%20these%20search%20results%20for%20the%20query%20%22${encodeURIComponent(query)}%22%20and%20provide%20a%20concise%20summary%20of%20the%20most%20relevant%20information:%0A%0A${encodeURIComponent(resultsText)}&uid=${psid}`,
+                { timeout: 120000 }
+            );
+            
+            // Send AI analysis
+            if (analysisResponse.data?.response) {
+                await messengerApi.sendText(psid, `📊 Analysis:\n\n${analysisResponse.data.response}`);
+            } else {
+                await messengerApi.sendText(psid, "I found some results, but couldn't analyze them properly. Here are the raw results:");
+            }
+            
+            // Additionally, create a more comprehensive analysis
+            if (analysisResponse.data?.response) {
+                const followUpResponse = await axios.get(
+                    `https://rapido.zetsu.xyz/api/gpt4-1?query=Based%20on%20these%20search%20results%20for%20%22${encodeURIComponent(query)}%22%2C%20create%20a%20bullet%20point%20summary%20of%20the%20main%20topics%20found%20and%20identify%20the%20most%20relevant%20source%20for%20each%20topic:%0A%0A${encodeURIComponent(resultsText)}&uid=${psid}`,
+                    { timeout: 120000 }
+                );
+                
+                if (followUpResponse.data?.response) {
+                    await messengerApi.sendText(psid, `🔍 Key Topics:\n\n${followUpResponse.data.response}`);
+                }
+            }
+            
+            // Send the original results as links
             const elements = response.data.results.slice(0, 5).map(res => ({
                 title: res.title,
                 subtitle: res.snippet,
                 image_url: res.image,
                 default_action: { type: "web_url", url: res.link, webview_height_ratio: "tall" }
             }));
-            await messengerApi.sendText(psid, "Here are the top results I found:");
+            await messengerApi.sendText(psid, "\n📎 Here are the top search results I found:");
             await messengerApi.sendGenericTemplate(psid, elements);
+            
+            // Ask if they want to refine the search
+            await messengerApi.sendText(psid, "\nWould you like to refine your search or ask a follow-up question? (Type 'no' to exit)");
+            stateManager.setUserState(psid, 'awaiting_search_refinement', { query });
         } else {
-            await messengerApi.sendText(psid, "Sorry, I couldn't find any results for that search.");
+            await messengerApi.sendText(psid, "Sorry, I couldn't find any results for that search. Could you try rephrasing your query?");
         }
     } catch (error) {
-        await messengerApi.sendText(psid, "Sorry, the search service is currently unavailable.");
-    } finally {
-        stateManager.clearUserState(psid);
-        await messengerApi.sendText(psid, "Type 'menu' to start a new task.");
+        console.error("Google search error:", error);
+        await messengerApi.sendText(psid, "Sorry, the search service is currently unavailable. Please try again later.");
     }
 }
 
