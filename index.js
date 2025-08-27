@@ -90,9 +90,11 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
                 case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
                 case 'awaiting_delete_ref': return adminHandler.processDeleteRef(sender_psid, messageText, sendText);
-                // --- NEW STATES FOR ADMIN CREATE FLOW ---
                 case 'awaiting_admin_create_email': return adminHandler.promptForAdminCreate_Step2_GetMod(sender_psid, messageText, sendText);
                 case 'awaiting_admin_create_mod_id': return adminHandler.processAdminCreate_Step3_CreateJob(sender_psid, messageText, sendText);
+                // --- NEW BULK REFS STATES ---
+                case 'awaiting_bulk_refs_mod_id': return adminHandler.processBulkRefs_Step2_GetRefs(sender_psid, messageText, sendText);
+                case 'awaiting_bulk_refs_list': return adminHandler.processBulkRefs_Step3_SaveRefs(sender_psid, messageText, sendText);
             }
         }
         switch (lowerCaseText) {
@@ -107,8 +109,9 @@ async function handleMessage(sender_psid, webhook_event) {
             case '9': return adminHandler.toggleAdminOnlineStatus(sender_psid, sendText);
             case '10': return adminHandler.promptForReply_Step1_GetPSID(sender_psid, sendText);
             case '11': return adminHandler.handleViewJobs(sender_psid, sendText);
-            // --- NEW COMMAND ---
             case '12': return adminHandler.promptForAdminCreate_Step1_GetEmail(sender_psid, sendText);
+            // --- NEW COMMAND ---
+            case '13': return adminHandler.promptForBulkRefs_Step1_GetModId(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
 
