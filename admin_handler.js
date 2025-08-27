@@ -32,6 +32,7 @@ Type 9: Toggle Online/Offline Status (Currently: ${onlineStatus})
 Type 10: 💬 Reply to a user with account details
 Type 11: 🤖 View account creation jobs
 Type 12: ⚡ Create account for user (Admin)
+Type 13: ➕ Add bulk reference numbers
 `;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
@@ -279,6 +280,63 @@ async function handleViewJobs(sender_psid, sendText) {
     stateManager.clearUserState(sender_psid);
 }
 
+// --- Bulk Reference Number Flow ---
+
+async function promptForBulkRefs_Step1_GetModId(sender_psid, sendText) {
+    const mods = await db.getMods();
+    if (!mods || mods.length === 0) {
+        await sendText(sender_psid, "❌ There are no mods in the system yet. You must add a mod before you can add references.\n\nPlease use 'Type 7: Add a new mod' from the menu first.");
+        stateManager.clearUserState(sender_psid);
+        return;
+    }
+    let availableMods = "Available Mod IDs:\n";
+    mods.forEach(mod => {
+        availableMods += `- ID: ${mod.id}, Name: ${mod.name}\n`;
+    });
+    await sendText(sender_psid, `${availableMods}\nWhich mod would you like to add bulk references to? Please type the Mod ID (e.g., 1).`);
+    stateManager.setUserState(sender_psid, 'awaiting_bulk_refs_mod_id');
+}
+
+async function processBulkRefs_Step2_GetRefs(sender_psid, text, sendText) {
+    const modId = parseInt(text.trim());
+    const mod = await db.getModById(modId);
+    if (isNaN(modId) || !mod) {
+        await sendText(sender_psid, "Invalid Mod ID. Please type a valid number from the list.\nTo return to the menu, type \"Menu\".");
+        return;
+    }
+    await sendText(sender_psid, `Okay, adding references to Mod ${mod.id} (${mod.name}). Please send the list of 13-digit reference numbers now.\n\nYou can send them one per line or separated by spaces/commas.`);
+    stateManager.setUserState(sender_psid, 'awaiting_bulk_refs_list', { modId: mod.id });
+}
+
+async function processBulkRefs_Step3_SaveRefs(sender_psid, text, sendText) {
+    const { modId } = stateManager.getUserState(sender_psid);
+    try {
+        // Split by any combination of newlines, spaces, or commas, then filter out empty strings.
+        const refNumbers = text.split(/[\s,\n]+/).map(ref => ref.trim()).filter(Boolean);
+
+        if (refNumbers.length === 0) {
+            throw new Error("No valid reference numbers were found in your message.");
+        }
+
+        const { successfulAdds, duplicates, invalids } = await db.addBulkReferences(modId, refNumbers);
+
+        let summary = `✅ Bulk import complete for Mod ${modId}.\n\n`;
+        summary += `- Successfully added: ${successfulAdds}\n`;
+        if (duplicates.length > 0) {
+            summary += `- Duplicates skipped: ${duplicates.length}\n`;
+        }
+        if (invalids.length > 0) {
+            summary += `- Invalid format skipped: ${invalids.length}\n`;
+        }
+        await sendText(sender_psid, summary);
+
+    } catch (e) {
+        await sendText(sender_psid, `❌ An error occurred: ${e.message}`);
+    } finally {
+        stateManager.clearUserState(sender_psid);
+    }
+}
+
 module.exports = {
     showAdminMenu, handleViewReferences, promptForBulkAccounts_Step1_ModId, 
     processBulkAccounts_Step2_GetAccounts, processBulkAccounts_Step3_SaveAccounts,
@@ -293,5 +351,8 @@ module.exports = {
     handleViewJobs,
     promptForAdminCreate_Step1_GetEmail,
     promptForAdminCreate_Step2_GetMod,
-    processAdminCreate_Step3_CreateJob
+    processAdminCreate_Step3_CreateJob,
+    promptForBulkRefs_Step1_GetModId,
+    processBulkRefs_Step2_GetRefs,
+    processBulkRefs_Step3_SaveRefs
 };
