@@ -1,4 +1,4 @@
-// index.js (Main Controller - Final Version with GPT-OSS)
+// index.js (Main Controller - Final Version with All Enhancements)
 const express = require('express');
 const secrets = require('./secrets.js');
 const stateManager = require('./state_manager.js');
@@ -36,7 +36,7 @@ What would you like to do?
 15. Spotify Search 🎵
 
 --- Utility Tools ---
-16. Google Search
+16. Google Search 🔍 (AI-powered analysis & summaries)
 17. Google Translate
 18. AI Text Humanizer ✍️
 
@@ -44,19 +44,23 @@ Just type the number of your choice.`;
     await messengerApi.sendText(psid, menuText);
 }
 
-// --- UPDATED OpenRouter Sub-Menu ---
-async function showOpenRouterMenu(psid) {
+// --- Updated OpenRouter Sub-Menu ---
+async function showVisionOpenRouterMenu(psid) {
     const menuText = `🧠 OpenRouter Model Selection 🧠
 
-All models below have conversation memory.
+All models below have conversation memory and support image viewing! 🖼️
 
-Please choose a model to chat with:
+Please choose a model:
 
 1. Llama 3.3 (70B)
-2. Qwen 2.5 (72B)
-3. GLM-4.5-air
+2. Qwen 2.5 (72B) - Vision Model
+3. GLM-4.5-air - Vision Model
 4. Kimi K2
-5. GPT-OSS (20B) 🆕`;
+5. GPT-OSS (20B)
+6. Llama 4 Maverick (8B)
+7. DeepSeek R1
+
+Note: All models can view and analyze images you send during conversation.`;
     await messengerApi.sendText(psid, menuText);
 }
 
@@ -124,6 +128,9 @@ async function handleTextMessage(psid, message) {
             case 'awaiting_spotify_query':
                 toolHandlers.handleSpotifySearch(psid, messageText);
                 return;
+            case 'awaiting_search_refinement':
+                handleSearchRefinement(psid, messageText);
+                return;
         }
     }
 
@@ -132,15 +139,24 @@ async function handleTextMessage(psid, message) {
 
 async function handleImageAttachment(psid, imageUrl) {
     const userState = stateManager.getUserState(psid);
-    if (userState?.state === 'in_chat' && (userState.model === 'kaiz' || userState.model === 'qwen/qwen2.5-vl-72b-instruct:free')) {
-        let aiName = userState.model === 'kaiz' ? 'Kaiz AI' : 'Qwen 2.5';
-        await messengerApi.sendText(psid, `🖼️ Image received! Analyzing with ${aiName}...`);
-        toolHandlers.forwardToAI(psid, "What do you see in this image?", userState.model, '', imageUrl, userState.system);
+    if (userState?.state === 'in_chat') {
+        // Check if model is an OpenRouter model or Kaiz (which also supports images)
+        if (userState.model.includes('/') || userState.model === 'kaiz') {
+            let aiName = userState.model.includes('/') ? 
+                userState.model.split('/')[1].split(':')[0] : 
+                'Kaiz AI';
+                
+            await messengerApi.sendText(psid, `🖼️ Image received! Analyzing with ${aiName}...`);
+            toolHandlers.forwardToAI(psid, "What do you see in this image?", userState.model, '', imageUrl, userState.system);
+        } 
+        else {
+            await messengerApi.sendText(psid, "⚠️ This AI model doesn't support image viewing. Please use an OpenRouter model or Kaiz AI for image analysis.");
+        }
     } 
     else if (userState?.state === 'awaiting_ghibli_image') {
         toolHandlers.handleGhibliRequest(psid, imageUrl);
     } else {
-        await messengerApi.sendText(psid, "I see you've sent an image, but I'm not sure what to do with it. Please select an option from the menu first.");
+        await messengerApi.sendText(psid, "I see you've sent an image, but I'm not sure what to do with it. Please select an option from the menu first or in an active chat with a model that supports images.");
     }
 }
 
@@ -151,7 +167,7 @@ function handleMenuSelection(psid, choice) {
         // AI Models
         case '1':
             stateManager.setUserState(psid, 'awaiting_openrouter_model');
-            showOpenRouterMenu(psid);
+            showVisionOpenRouterMenu(psid);
             break;
         case '2':
             stateManager.setUserState(psid, 'awaiting_gpt4o_roleplay');
@@ -188,7 +204,7 @@ function handleMenuSelection(psid, choice) {
         // Utility Tools
         case '16':
             stateManager.setUserState(psid, 'awaiting_google_query');
-            messengerApi.sendText(psid, "✅ Google Search selected. What do you want to search for?");
+            messengerApi.sendText(psid, "✅ Enhanced Google Search selected with AI analysis.\n\nWhat would you like to search for?");
             break;
         case '17':
             stateManager.setUserState(psid, 'awaiting_translate_text');
@@ -204,7 +220,6 @@ function handleMenuSelection(psid, choice) {
     }
 }
 
-// --- UPDATED OpenRouter Model Selection Handler ---
 function handleOpenRouterModelSelection(psid, choice) {
     let model;
     switch (choice) {
@@ -212,20 +227,41 @@ function handleOpenRouterModelSelection(psid, choice) {
         case '2': model = 'qwen/qwen2.5-vl-72b-instruct:free'; break;
         case '3': model = 'z.ai/glm-4.5-air:free'; break;
         case '4': model = 'moonshotai/kimi-k2:free'; break;
-        case '5': model = 'openai/gpt-oss-20b:free'; break; // Added new model
+        case '5': model = 'openai/gpt-oss-20b:free'; break;
+        case '6': model = 'meta-llama/llama-4-maverick:free'; break;
+        case '7': model = 'deepseek/deepseek-r1-0528:free'; break;
         default:
             messengerApi.sendText(psid, "Invalid selection. Please choose a number from the list.");
             return;
     }
+    
     stateManager.setUserState(psid, 'awaiting_openrouter_system', { model });
-    messengerApi.sendText(psid, `✅ Model selected.\nNow, please provide a system prompt (e.g., "You are a friendly assistant"). Or, type 'skip' for the default.`);
+    
+    // Provide model-specific information
+    let modelName = model.split('/')[1].split(':')[0];
+    
+    messengerApi.sendText(psid, `✅ ${modelName} selected.\n🖼️ This model supports image viewing!\n\nNow, please provide a system prompt (e.g., "You are a friendly assistant"). Or, type 'skip' for the default.`);
 }
 
 function handleOpenRouterSystemPrompt(psid, text, model) {
     const system = text.toLowerCase() === 'skip' ? '' : text;
     stateManager.setUserState(psid, 'in_chat', { model, system });
     let modelFriendlyName = model.split('/')[1].split(':')[0];
+    
     let confirmation = `✅ You are now chatting with OpenRouter's ${modelFriendlyName}.`;
+    
+    // All OpenRouter models support image viewing
+    confirmation += `\n🖼️ This model supports image viewing - you can send images for analysis!`;
+    
+    // Special handling for DeepSeek R1
+    if (modelFriendlyName.includes('deepseek')) {
+        confirmation += `\n🔍 This model excels at complex reasoning tasks and provides detailed analysis.`;
+    }
+    // Special handling for Llama 4 Maverick
+    else if (modelFriendlyName.includes('maverick')) {
+        confirmation += `\n🔧 This is the newly released Llama 4 Maverick model - perfect for complex tasks!`;
+    }
+    
     if (system) {
         confirmation += `\n*System Prompt:* "${system}"`;
     }
@@ -242,20 +278,43 @@ function handleGpt4oRoleplay(psid, text) {
     messengerApi.sendText(psid, confirmation);
 }
 
-function handleAiSelection(psid, model) {
-    let modelName;
-    if (model === 'grok') modelName = 'Grok';
-    if (model === 'claude') modelName = 'Claude 3 Haiku';
-    if (model === 'o3mini') modelName = 'O3 Mini';
-    if (model === 'chatgot') modelName = 'ChatGot.io (w/ Memory)';
-    if (model === 'geminipro') modelName = 'Gemini Pro (w/ Memory)';
-    if (model === 'kaiz') modelName = 'Kaiz AI (Vision & Memory)';
-    let welcomeMessage;
-    if (model === 'kaiz') {
-        welcomeMessage = `✅ You are now chatting with ${modelName}. You can ask questions or send an image!\n\n(Type 'switch' or 'exit' at any time.)`;
+function handleAiSelection(psid, model, fromMenu = true) {
+    let modelName, modelDescription;
+    
+    if (fromMenu) {
+        if (model === 'grok') { modelName = 'Grok'; modelDescription = 'Text only'; }
+        if (model === 'claude') { modelName = 'Claude 3 Haiku'; modelDescription = 'Text only'; }
+        if (model === 'o3mini') { modelName = 'O3 Mini'; modelDescription = 'Text only'; }
+        if (model === 'chatgot') { modelName = 'ChatGot.io (w/ Memory)'; modelDescription = 'Text only'; }
+        if (model === 'geminipro') { modelName = 'Gemini Pro (w/ Memory)'; modelDescription = 'Text only'; }
+        if (model === 'kaiz') { modelName = 'Kaiz AI (Vision & Memory)'; modelDescription = 'Supports images'; }
+        
+        let visionWarning = '';
+        if (model === 'kaiz') {
+            visionWarning = '🖼️ This model supports image analysis - you can send images during chat!';
+        } else {
+            visionWarning = '⚠️ This model only supports text - images cannot be analyzed.';
+        }
+        
+        modelDescription = `${modelDescription} - ${visionWarning}`;
     } else {
-        welcomeMessage = `✅ You are now chatting with ${modelName}. Ask me anything!\n\n(Type 'switch' or 'exit' at any time.)`;
+        // For direct model selection from the OpenRouter menu
+        if (model.includes('/')) {
+            modelName = model.split('/')[1].split(':')[0];
+            modelDescription = '✨ Vision model - supports image analysis!';
+        } else {
+            modelName = model === 'kaiz' ? 'Kaiz AI' : model;
+            modelDescription = model === 'kaiz' ? 'Vision model - supports image analysis!' : 'Text only model';
+        }
     }
+    
+    let welcomeMessage = `✅ You are now chatting with ${modelName}. ${modelDescription}`;
+    if (model === 'kaiz' || (model.includes('/'))) {
+        welcomeMessage += `\n\nYou can ask questions or send images for analysis!\n\n(Type 'switch' or 'exit' at any time.)`;
+    } else {
+        welcomeMessage += `\n\nAsk me anything!\n\n(Type 'switch' or 'exit' at any time.)`;
+    }
+    
     stateManager.setUserState(psid, 'in_chat', { model });
     messengerApi.sendText(psid, welcomeMessage);
 }
@@ -272,13 +331,61 @@ function handleDownloaderSelection(psid, platform) {
 function handleInChat(psid, lowerCaseText, originalText, model, roleplay, system) {
     if (lowerCaseText === 'switch') {
         stateManager.clearUserState(psid);
-        messengerApi.sendText(psid, "🔄 Switching tasks...");
+        
+        // Provide guidance about vision models
+        if (isVisionModel(model)) {
+            messengerApi.sendText(psid, `🔄 Exiting chat with ${getVisionModelName(model)}. You can switch to another model or start a new task.`);
+        } else {
+            messengerApi.sendText(psid, `🔄 Exiting chat with ${model}. You can switch to another model or start a new task.`);
+        }
+        
         showMainMenu(psid);
     } else if (lowerCaseText === 'exit') {
         stateManager.clearUserState(psid);
         messengerApi.sendText(psid, "✅ You have exited the chat session. Type 'menu' to start again.");
     } else {
         toolHandlers.forwardToAI(psid, originalText, model, roleplay, '', system);
+    }
+}
+
+// Helper functions
+function isVisionModel(model) {
+    // Check if model is an OpenRouter model (all OpenRouter models support vision)
+    if (model.includes('/')) {
+        return true;
+    }
+    
+    // Specific vision models for non-OpenRouter
+    const visionModels = [
+        'kaiz'
+    ];
+    return visionModels.includes(model);
+}
+
+function getVisionModelName(model) {
+    if (!model.includes('/')) {
+        if (model === 'kaiz') return 'Kaiz AI';
+        return 'Unknown Vision Model';
+    }
+    
+    // Extract model name from OpenRouter identifier
+    const modelName = model.split('/')[1].split(':')[0];
+    return modelName;
+}
+
+// Added Handler for Search Refinement
+function handleSearchRefinement(psid, text) {
+    const userState = stateManager.getUserState(psid);
+    if (userState?.state === 'awaiting_search_refinement') {
+        const refinedQuery = text.trim().toLowerCase();
+        if (refinedQuery === 'no' || refinedQuery === 'exit' || refinedQuery === 'menu') {
+            stateManager.clearUserState(psid);
+            messengerApi.sendText(psid, "✅ Exiting search mode. Type 'menu' to see all options again.");
+        } else {
+            // Clear refinement state and start a new search with the refined query
+            stateManager.clearUserState(psid);
+            toolHandlers.handleGoogleSearch(psid, refinedQuery);
+        }
     }
 }
 
