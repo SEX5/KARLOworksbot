@@ -67,4 +67,43 @@ async function useClaim(refNumber) { await getDb().query('UPDATE "references" SE
 async function addMod(id, name, description, price, imageUrl, defaultClaimsMax) { await getDb().query('INSERT INTO mods (id, name, description, price, image_url, default_claims_max) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(id) DO NOTHING', [id, name, description, price, imageUrl, defaultClaimsMax]); }
 async function getModsByPrice(price) { const res = await getDb().query('SELECT * FROM mods WHERE price BETWEEN $1 AND $2', [price - 0.01, price + 0.01]); return res.rows; }
 
-module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, };
+async function addBulkReferences(modId, refNumbers) {
+    const client = await getDb().connect();
+    const mod = await getModById(modId); // Reuse existing function to get mod details
+    if (!mod) {
+        throw new Error(`Mod with ID ${modId} not found.`);
+    }
+    const claimsMax = mod.default_claims_max || 1;
+    let successfulAdds = 0;
+    const duplicates = [];
+    const invalids = [];
+
+    try {
+        await client.query('BEGIN');
+        for (const ref of refNumbers) {
+            // Validate that the reference number is exactly 13 digits
+            if (!/^\d{13}$/.test(ref)) {
+                invalids.push(ref);
+                continue; // Skip invalid format
+            }
+            const res = await client.query(
+                'INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING',
+                [ref, 'ADMIN_ADDED', modId, claimsMax]
+            );
+            if (res.rowCount > 0) {
+                successfulAdds++;
+            } else {
+                duplicates.push(ref);
+            }
+        }
+        await client.query('COMMIT');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+    return { successfulAdds, duplicates, invalids };
+}
+
+module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, addBulkReferences };
