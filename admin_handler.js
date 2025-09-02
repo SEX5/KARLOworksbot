@@ -33,10 +33,41 @@ Type 10: 💬 Reply to a user with account details
 Type 11: 🤖 View account creation jobs
 Type 12: ⚡ Create account for user (Admin)
 Type 13: ➕ Add bulk reference numbers
+Type 14: ⏸️ Pause/Resume bot for a user
 `;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
 }
+
+// --- ADDED PAUSE/RESUME FLOW ---
+async function promptForPauseToggle_GetPSID(sender_psid, sendText) {
+    await sendText(sender_psid, "Please enter the Page-Scoped ID (PSID) of the user you want to pause or resume.");
+    stateManager.setUserState(sender_psid, 'awaiting_pause_toggle_psid');
+}
+
+async function processPauseToggle(sender_psid, text, sendText) {
+    const targetPsid = text.trim();
+    if (!/^\d{15,17}$/.test(targetPsid)) {
+        await sendText(sender_psid, "❌ That doesn't look like a valid PSID. Please try again or type 'Menu' to cancel.");
+        return;
+    }
+    try {
+        const isCurrentlyPaused = await db.isUserPaused(targetPsid);
+        if (isCurrentlyPaused) {
+            await db.resumeUser(targetPsid);
+            await sendText(sender_psid, `✅ User ${targetPsid} has been RESUMED. The bot will now respond to them.`);
+        } else {
+            await db.pauseUser(targetPsid);
+            await sendText(sender_psid, `✅ User ${targetPsid} has been PAUSED. The bot will now ignore their messages, allowing you to talk freely.`);
+        }
+    } catch (e) {
+        await sendText(sender_psid, `❌ An error occurred: ${e.message}`);
+    } finally {
+        stateManager.clearUserState(sender_psid);
+    }
+}
+// --- END PAUSE/RESUME FLOW ---
+
 
 // --- NEW: Admin Account Creation Flow ---
 
@@ -354,5 +385,7 @@ module.exports = {
     processAdminCreate_Step3_CreateJob,
     promptForBulkRefs_Step1_GetModId,
     processBulkRefs_Step2_GetRefs,
-    processBulkRefs_Step3_SaveRefs
+    processBulkRefs_Step3_SaveRefs,
+    promptForPauseToggle_GetPSID,
+    processPauseToggle
 };
