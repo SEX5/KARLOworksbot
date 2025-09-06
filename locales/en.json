@@ -9,6 +9,7 @@
   "menu_suffix": "Just type the number of your choice! 😊",
   "admin_online": "The admin is currently online! 🟢\n\nYou can message them directly for assistance at:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nAlternatively, you can use the options below:",
   "admin_offline": "The admin is currently offline. 🔴\n\nYou can use the automated menu below for assistance.",
+  "maintenance_mode_message": "The bot is currently down for maintenance. We'll be back shortly! Thank you for your patience. 🙏",
 
   "manual_entry_start": "😔 Oops! I couldn't read your receipt automatically.\nNo worries — we can still register your purchase manually! 🙌\nPlease type your 13-digit GCash reference number! Remove any spaces before sending the reference number. Example 123456789123:\n(Type 'Menu' to return to the main menu.)",
   "manual_entry_invalid_ref": "❌ That doesn't look like a valid 13-digit reference number.\nPlease double-check and try again. Example: 1234567890123\n(Type 'Menu' to return to the main menu.)",
