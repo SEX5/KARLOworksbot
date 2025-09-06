@@ -10,6 +10,7 @@ const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
 const jobPoller = require('./job_poller.js'); 
 const { sendText, sendImage } = require('./messenger_api.js'); 
+const lang = require('./language_manager.js');
 
 const app = express();
 app.use(express.json());
@@ -57,6 +58,7 @@ async function handleMessage(sender_psid, webhook_event) {
     const lowerCaseText = messageText?.toLowerCase();
     
     const isAdmin = await dbManager.isAdmin(sender_psid);
+    const adminInfo = await dbManager.getAdminInfo();
 
     if (isAdmin) {
         // --- ADMIN LOGIC ---
@@ -113,13 +115,21 @@ async function handleMessage(sender_psid, webhook_event) {
             case '11': return adminHandler.handleViewJobs(sender_psid, sendText);
             case '12': return adminHandler.promptForAdminCreate_Step1_GetEmail(sender_psid, sendText);
             case '13': return adminHandler.promptForBulkRefs_Step1_GetModId(sender_psid, sendText);
-            // --- NEW COMMAND ---
             case '14': return adminHandler.promptForPauseToggle_GetPSID(sender_psid, sendText);
+            case '15': return adminHandler.toggleMaintenanceMode(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
 
     } else {
         // --- USER LOGIC ---
+        // Check for maintenance mode first. If it's on, stop all user interactions.
+        if (adminInfo && adminInfo.is_maintenance_mode) {
+            const userStateObj = stateManager.getUserState(sender_psid);
+            const userLang = userStateObj?.lang || 'en'; // Default to English if language not set
+            await sendText(sender_psid, lang.getText('maintenance_mode_message', userLang));
+            return; // Stop processing for the user
+        }
+        
         // --- ADDED PAUSE CHECK ---
         const isPaused = await dbManager.isUserPaused(sender_psid);
         if (isPaused) {
@@ -238,4 +248,3 @@ async function startServer() {
 }
 
 startServer();
- 
