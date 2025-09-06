@@ -3,6 +3,7 @@ const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
 const lang = require('./language_manager');
+const { handleUserError } = require('./error_handler.js');
 
 // Simple password generator
 function generatePassword(length = 10) {
@@ -64,14 +65,14 @@ async function handleManualReference(sender_psid, text, sendText, userLang = 'en
 }
 
 async function handleManualModSelection(sender_psid, text, sendText, sendImage, ADMIN_ID, userLang = 'en') {
-    const { imageUrl, refNumber } = stateManager.getUserState(sender_psid);
-    const modId = parseInt(text.trim());
-    const mod = await db.getModById(modId);
-    if (isNaN(modId) || !mod) {
-        await sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
-        return;
-    }
     try {
+        const { imageUrl, refNumber } = stateManager.getUserState(sender_psid);
+        const modId = parseInt(text.trim());
+        const mod = await db.getModById(modId);
+        if (isNaN(modId) || !mod) {
+            await sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
+            return;
+        }
         const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
         const claimsText = claimsAdded === 1 ? '1 replacement claim' : `${claimsAdded} replacement claims`;
         const successMsg = lang.getText('manual_entry_success', userLang)
@@ -83,18 +84,20 @@ async function handleManualModSelection(sender_psid, text, sendText, sendImage, 
         const adminNotification = `⚠️ MANUAL REGISTRATION (AI FAILED) ⚠️\nUser: ${userName}\nManually Entered Info:\n- Ref No: ${refNumber}\n- Mod: ${mod.name} (ID: ${modId})\nThe original receipt is attached below for verification.`;
         await sendText(ADMIN_ID, adminNotification);
         await sendImage(ADMIN_ID, imageUrl);
+    
+        stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
             await sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
             const userName = await messengerApi.getUserProfile(sender_psid);
             await sendText(ADMIN_ID, `⚠️ User ${userName} tried to manually submit a DUPLICATE reference number: ${refNumber}`);
+            stateManager.clearUserState(sender_psid);
+            stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
         } else {
-            console.error(e);
-            await sendText(sender_psid, lang.getText('error_unexpected', userLang));
+            await handleUserError(e, sender_psid, userLang, 'Manual Mod Selection');
         }
     }
-    stateManager.clearUserState(sender_psid);
-    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- View Available Mods ---
@@ -323,8 +326,7 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID, user
                 const userName = await messengerApi.getUserProfile(sender_psid);
                 await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`);
             } else {
-                console.error(e);
-                await sendText(sender_psid, lang.getText('error_unexpected', userLang));
+                await handleUserError(e, sender_psid, userLang, 'Mod Confirmation');
             }
         }
     } else {
@@ -336,10 +338,9 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID, user
 
 // --- Clarify Mod if Multiple Match ---
 async function handleModClarification(sender_psid, text, sendText, ADMIN_ID, userLang = 'en') {
-    const { refNumber, email } = stateManager.getUserState(sender_psid);
-    const modId = parseInt(text.trim());
-    
     try {
+        const { refNumber, email } = stateManager.getUserState(sender_psid);
+        const modId = parseInt(text.trim());
         const mod = await db.getModById(modId);
         if (isNaN(modId) || !mod) {
             await sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
@@ -380,8 +381,7 @@ async function handleModClarification(sender_psid, text, sendText, ADMIN_ID, use
             const userName = await messengerApi.getUserProfile(sender_psid);
             await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a duplicate reference number: ${refNumber}`);
         } else {
-            console.error(e);
-            await sendText(sender_psid, lang.getText('error_unexpected', userLang));
+            await handleUserError(e, sender_psid, userLang, 'Mod Clarification');
         }
     }
     stateManager.clearUserState(sender_psid);
@@ -421,51 +421,55 @@ async function promptForReplacement(sender_psid, sendText, userLang = 'en') {
 }
 
 async function processReplacementRequest(sender_psid, refNumber, sendText, userLang = 'en') {
-    if (!/^\d{13}$/.test(refNumber)) {
-        return sendText(sender_psid, lang.getText('claims_check_invalid_format', userLang));
-    }
-    const ref = await db.getReference(refNumber);
-    if (!ref) {
-        await sendText(sender_psid, lang.getText('claims_check_not_found', userLang));
-        stateManager.clearUserState(sender_psid);
-        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-        return;
-    }
-
-    if (ref.last_replacement_timestamp) {
-        const lastClaimTime = new Date(ref.last_replacement_timestamp).getTime();
-        const currentTime = new Date().getTime();
-        const twentyFourHoursInMillis = 24 * 60 * 60 * 1000;
-        if (currentTime - lastClaimTime < twentyFourHoursInMillis) {
-            await sendText(sender_psid, lang.getText('replace_limit_reached', userLang));
+    try {
+        if (!/^\d{13}$/.test(refNumber)) {
+            return sendText(sender_psid, lang.getText('claims_check_invalid_format', userLang));
+        }
+        const ref = await db.getReference(refNumber);
+        if (!ref) {
+            await sendText(sender_psid, lang.getText('claims_check_not_found', userLang));
             stateManager.clearUserState(sender_psid);
             stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
             return;
         }
-    }
 
-    if (ref.claims_used >= ref.claims_max) {
-        await sendText(sender_psid, lang.getText('replace_no_claims', userLang));
+        if (ref.last_replacement_timestamp) {
+            const lastClaimTime = new Date(ref.last_replacement_timestamp).getTime();
+            const currentTime = new Date().getTime();
+            const twentyFourHoursInMillis = 24 * 60 * 60 * 1000;
+            if (currentTime - lastClaimTime < twentyFourHoursInMillis) {
+                await sendText(sender_psid, lang.getText('replace_limit_reached', userLang));
+                stateManager.clearUserState(sender_psid);
+                stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+                return;
+            }
+        }
+
+        if (ref.claims_used >= ref.claims_max) {
+            await sendText(sender_psid, lang.getText('replace_no_claims', userLang));
+            stateManager.clearUserState(sender_psid);
+            stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+            return;
+        }
+        const account = await db.getAvailableAccount(ref.mod_id);
+        if (!account) {
+            await sendText(sender_psid, lang.getText('replace_no_stock', userLang));
+            stateManager.clearUserState(sender_psid);
+            stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+            return;
+        }
+        await db.claimAccount(account.id);
+        await db.useClaim(ref.ref_number);
+        const successMsg = lang.getText('replace_success', userLang)
+            .replace('{modId}', ref.mod_id)
+            .replace('{username}', account.username)
+            .replace('{password}', account.password);
+        await sendText(sender_psid, successMsg);
         stateManager.clearUserState(sender_psid);
         stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-        return;
+    } catch (e) {
+        await handleUserError(e, sender_psid, userLang, 'Replacement Request');
     }
-    const account = await db.getAvailableAccount(ref.mod_id);
-    if (!account) {
-        await sendText(sender_psid, lang.getText('replace_no_stock', userLang));
-        stateManager.clearUserState(sender_psid);
-        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-        return;
-    }
-    await db.claimAccount(account.id);
-    await db.useClaim(ref.ref_number);
-    const successMsg = lang.getText('replace_success', userLang)
-        .replace('{modId}', ref.mod_id)
-        .replace('{username}', account.username)
-        .replace('{password}', account.password);
-    await sendText(sender_psid, successMsg);
-    stateManager.clearUserState(sender_psid);
-    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 // --- Contact Admin ---
