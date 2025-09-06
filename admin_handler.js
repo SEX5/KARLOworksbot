@@ -17,6 +17,7 @@ const REFERENCES_PER_PAGE = 10;
 async function showAdminMenu(sender_psid, sendText) {
     const adminInfo = await db.getAdminInfo();
     const onlineStatus = adminInfo && adminInfo.is_online ? '✅ Online' : '❌ Offline';
+    const maintenanceStatus = adminInfo && adminInfo.is_maintenance_mode ? '🔴 ON' : '🟢 OFF';
     const menu = `
 Admin Menu:
 
@@ -34,6 +35,7 @@ Type 11: 🤖 View account creation jobs
 Type 12: ⚡ Create account for user (Admin)
 Type 13: ➕ Add bulk reference numbers
 Type 14: ⏸️ Pause/Resume bot for a user
+Type 15: 🔧 Toggle Maintenance Mode (Currently: ${maintenanceStatus})
 `;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
@@ -142,6 +144,19 @@ async function toggleAdminOnlineStatus(sender_psid, sendText) {
         await sendText(sender_psid, `Your status has been updated to: ${statusText}.\nTo return to the admin menu, type "Menu".`);
     } catch (e) {
         await sendText(sender_psid, `❌ An error occurred while updating your status: ${e.message}`);
+    }
+    stateManager.clearUserState(sender_psid);
+}
+
+async function toggleMaintenanceMode(sender_psid, sendText) {
+    try {
+        const adminInfo = await db.getAdminInfo();
+        const newStatus = !adminInfo.is_maintenance_mode;
+        await db.setMaintenanceMode(newStatus);
+        const statusText = newStatus ? '🔴 ON' : '🟢 OFF';
+        await sendText(sender_psid, `🔧 Maintenance mode is now ${statusText}.\nTo return to the admin menu, type "Menu".`);
+    } catch (e) {
+        await sendText(sender_psid, `❌ An error occurred while updating maintenance mode: ${e.message}`);
     }
     stateManager.clearUserState(sender_psid);
 }
@@ -377,6 +392,7 @@ module.exports = {
     processAddRef_Step2_GetMod, processAddRef_Step3_Save, promptForEditAdmin, 
     processEditAdmin, promptForEditRef, processEditRef, promptForAddMod, 
     processAddMod, promptForDeleteRef, processDeleteRef, toggleAdminOnlineStatus,
+    toggleMaintenanceMode,
     promptForReply_Step1_GetPSID, promptForReply_Step2_GetUsername,
     promptForReply_Step3_GetPassword, processReply_Step4_Send,
     handleViewJobs,
