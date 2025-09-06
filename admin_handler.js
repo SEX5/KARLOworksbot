@@ -37,6 +37,7 @@ Type 13: ➕ Add bulk reference numbers
 Type 14: ⏸️ Pause/Resume bot for a user
 Type 15: 🔧 Toggle Maintenance Mode (Currently: ${maintenanceStatus})
 Type 16: 🗑️ Delete accounts for a mod
+Type 17: 📢 Broadcast a message
 `;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
@@ -422,7 +423,78 @@ async function processDeleteAccounts_Step2_ConfirmAndDelete(sender_psid, text, s
         stateManager.clearUserState(sender_psid);
     }
 }
-// --- End of new functions ---
+
+// --- NEW: Broadcast Flow ---
+async function promptForBroadcast_Step1_GetMessage(sender_psid, sendText) {
+    await sendText(sender_psid, "📢 Please type the message you want to broadcast to all users.\n\n(Type 'Menu' to cancel.)");
+    stateManager.setUserState(sender_psid, 'awaiting_broadcast_message');
+}
+
+async function processBroadcast_Step2_ConfirmAndSend(sender_psid, text, sendText) {
+    const broadcastMessage = text.trim();
+    if (broadcastMessage.toLowerCase() === 'menu') {
+        stateManager.clearUserState(sender_psid);
+        await sendText(sender_psid, "Broadcast cancelled.");
+        return;
+    }
+    
+    stateManager.setUserState(sender_psid, 'awaiting_broadcast_confirmation', { broadcastMessage });
+    
+    const userIds = await db.getAllUserPSIDs();
+    const userCount = userIds.length;
+
+    await sendText(sender_psid, `
+This message will be sent to approximately ${userCount} users:
+---
+${broadcastMessage}
+---
+⚠️ This action cannot be undone. To proceed, please reply with the word 'CONFIRM'. Any other reply will cancel the broadcast.
+    `);
+}
+
+async function processBroadcast_Step3_Execute(sender_psid, text, sendText) {
+    if (text.trim().toUpperCase() !== 'CONFIRM') {
+        stateManager.clearUserState(sender_psid);
+        await sendText(sender_psid, "❌ Broadcast cancelled. Confirmation not received.");
+        return;
+    }
+
+    const { broadcastMessage } = stateManager.getUserState(sender_psid);
+    stateManager.clearUserState(sender_psid);
+
+    if (!broadcastMessage) {
+        await sendText(sender_psid, "❌ Error: Could not find the message to broadcast. Please start again.");
+        return;
+    }
+
+    await sendText(sender_psid, `🚀 Starting broadcast... This may take a few minutes. You will be notified upon completion.`);
+
+    const userIds = await db.getAllUserPSIDs();
+    let successCount = 0;
+    let errorCount = 0;
+    
+    const { sendText: sendUserText } = require('./messenger_api.js');
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    for (const userId of userIds) {
+        try {
+            await sendUserText(userId, broadcastMessage);
+            successCount++;
+        } catch (e) {
+            console.error(`Failed to send broadcast to user ${userId}:`, e.message);
+            errorCount++;
+        }
+        await delay(100); 
+    }
+
+    const summaryMessage = `
+✅ Broadcast complete!
+---
+- Sent successfully: ${successCount}
+- Failed to send: ${errorCount}
+    `;
+    await sendText(sender_psid, summaryMessage);
+}
 
 module.exports = {
     showAdminMenu, handleViewReferences, promptForBulkAccounts_Step1_ModId, 
@@ -446,5 +518,8 @@ module.exports = {
     promptForPauseToggle_GetPSID,
     processPauseToggle,
     promptForDeleteAccounts_Step1_GetModId,
-    processDeleteAccounts_Step2_ConfirmAndDelete
+    processDeleteAccounts_Step2_ConfirmAndDelete,
+    promptForBroadcast_Step1_GetMessage,
+    processBroadcast_Step2_ConfirmAndSend,
+    processBroadcast_Step3_Execute
 };
