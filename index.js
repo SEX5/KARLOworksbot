@@ -9,7 +9,7 @@ const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
 const jobPoller = require('./job_poller.js'); 
-const { sendText, sendImage } = require('./messenger_api.js'); 
+const { sendText, sendImage, sendQuickReplies } = require('./messenger_api.js'); 
 const lang = require('./language_manager.js');
 const { handleUserError } = require('./error_handler.js');
 
@@ -39,7 +39,7 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         if (userState?.state === 'awaiting_receipt_for_custom_mod') {
              await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
         } else {
-             await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, ADMIN_ID, userLang);
+             await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, sendImage, ADMIN_ID, userLang);
         }
 
     } catch (error) {
@@ -49,7 +49,7 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         // If the error happens during a standard purchase, try the manual fallback
         if (userState?.state === 'awaiting_receipt_for_purchase') {
             console.warn(`Receipt analysis failed for user ${sender_psid}, initiating manual flow. Error: ${error.message}`);
-            await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl, userLang);
+            await userHandler.startManualEntryFlow(sender_psid, sendText, sendImage, imageUrl, userLang);
         } else {
             // For custom mods or other unexpected scenarios, use the generic error handler
             await handleUserError(error, sender_psid, userLang, 'Receipt Submission');
@@ -59,14 +59,15 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
 
 async function handleMessage(sender_psid, webhook_event) {
     try {
-        const messageText = typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null;
+        // Prioritize quick reply payload over text input
+        const messageText = webhook_event.message?.quick_reply?.payload || (typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null);
         const lowerCaseText = messageText?.toLowerCase();
         
         const isAdmin = await dbManager.isAdmin(sender_psid);
         const adminInfo = await dbManager.getAdminInfo();
 
         if (isAdmin) {
-            // --- ADMIN LOGIC ---
+            // --- ADMIN LOGIC (No changes here for buttons) ---
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
 
@@ -162,8 +163,12 @@ async function handleMessage(sender_psid, webhook_event) {
                     await userHandler.showUserMenu(sender_psid, sendText, 'tl');
                     return;
                 } else {
-                    const langPrompt = "Please select your language type the number only:\n\n1. English\n2. Tagalog";
-                    await sendText(sender_psid, langPrompt);
+                    const langPrompt = "Please select your language:";
+                    const replies = [
+                        { title: "English", payload: "1" },
+                        { title: "Tagalog", payload: "2" }
+                    ];
+                    await sendQuickReplies(sender_psid, langPrompt, replies);
                     stateManager.setUserState(sender_psid, 'awaiting_language_choice', {});
                     return;
                 }
