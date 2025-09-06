@@ -78,6 +78,15 @@ async function useClaim(refNumber) { await getDb().query('UPDATE "references" SE
 async function addMod(id, name, description, price, imageUrl, defaultClaimsMax) { await getDb().query('INSERT INTO mods (id, name, description, price, image_url, default_claims_max) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(id) DO NOTHING', [id, name, description, price, imageUrl, defaultClaimsMax]); }
 async function getModsByPrice(price) { const res = await getDb().query('SELECT * FROM mods WHERE price BETWEEN $1 AND $2', [price - 0.01, price + 0.01]); return res.rows; }
 async function deleteAvailableAccountsByModId(modId) { const query = 'DELETE FROM accounts WHERE mod_id = $1 AND is_available = TRUE'; const res = await getDb().query(query, [modId]); return res.rowCount; }
+async function getAllUserPSIDs() {
+    const query = `
+        SELECT DISTINCT user_id FROM "references" WHERE user_id != 'ADMIN_ADDED'
+        UNION
+        SELECT DISTINCT user_psid FROM creation_jobs;
+    `;
+    const res = await getDb().query(query);
+    return res.rows.map(row => row.user_id);
+}
 
 async function addBulkReferences(modId, refNumbers) {
     const client = await getDb().connect();
@@ -118,4 +127,4 @@ async function addBulkReferences(modId, refNumbers) {
     return { successfulAdds, duplicates, invalids };
 }
 
-module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, setMaintenanceMode, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, addBulkReferences, isUserPaused, pauseUser, resumeUser, deleteAvailableAccountsByModId };
+module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, setMaintenanceMode, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, addBulkReferences, isUserPaused, pauseUser, resumeUser, deleteAvailableAccountsByModId, getAllUserPSIDs };
