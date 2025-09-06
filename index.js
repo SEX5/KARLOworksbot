@@ -214,6 +214,8 @@ async function handleMessage(sender_psid, webhook_event) {
                     case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, messageText, sendText, userLang);
                     case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, messageText, sendText, ADMIN_ID, userLang);
                     case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_report_ref': return userHandler.handleReportReference(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_report_issue': return userHandler.forwardReportToAdmin(sender_psid, messageText, sendText, ADMIN_ID, userLang);
                 }
             }
             switch (lowerCaseText) {
@@ -223,6 +225,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 case '4': return userHandler.promptForCustomMod(sender_psid, sendText, userLang);
                 case '5': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
                 case '6': return userHandler.handleViewProofs(sender_psid, sendText, userLang);
+                case '7': return userHandler.promptForReport(sender_psid, sendText, userLang);
                 default: return userHandler.showUserMenu(sender_psid, sendText, userLang);
             }
         }
