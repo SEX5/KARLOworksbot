@@ -19,6 +19,36 @@ async function sendText(psid, text) {
 }
 
 /**
+ * Sends a text message with quick reply buttons.
+ * @param {string} psid - The user's Page-Scoped ID.
+ * @param {string} text - The message to send.
+ * @param {Array<Object>} replies - An array of quick reply objects, e.g., [{ title: "Yes!", payload: "YES_PAYLOAD" }]
+ */
+async function sendQuickReplies(psid, text, replies) {
+    const quickReplies = replies.map(reply => ({
+        content_type: "text",
+        title: reply.title,
+        payload: reply.payload
+    }));
+
+    const messageData = {
+        recipient: { id: psid },
+        messaging_type: "RESPONSE",
+        message: {
+            text: text,
+            quick_replies: quickReplies
+        }
+    };
+
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    } catch (error) {
+        console.error("Error sending quick replies:", error.response?.data || error.message);
+    }
+}
+
+
+/**
  * Sends an image message to a user.
  * @param {string} psid - The user's Page-Scoped ID.
  * @param {string} imageUrl - The public URL of the image to send.
@@ -64,5 +94,6 @@ async function getUserProfile(psid) {
 module.exports = {
     sendText,
     sendImage,
-    getUserProfile
+    getUserProfile,
+    sendQuickReplies
 };
