@@ -38,6 +38,7 @@ Type 14: ⏸️ Pause/Resume bot for a user
 Type 15: 🔧 Toggle Maintenance Mode (Currently: ${maintenanceStatus})
 Type 16: 🗑️ Delete accounts for a mod
 Type 17: 📢 Broadcast a message
+Type 18: ✍️ Edit reference claims
 `;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
@@ -496,6 +497,69 @@ async function processBroadcast_Step3_Execute(sender_psid, text, sendText) {
     await sendText(sender_psid, summaryMessage);
 }
 
+// --- NEW: Edit Claims Flow ---
+async function promptForEditClaims_Step1_GetRef(sender_psid, sendText) {
+    await sendText(sender_psid, "✍️ Please enter the 13-digit reference number you want to edit.");
+    stateManager.setUserState(sender_psid, 'awaiting_edit_claims_ref');
+}
+
+async function promptForEditClaims_Step2_GetNewClaims(sender_psid, text, sendText) {
+    const refNumber = text.trim();
+    if (!/^\d{13}$/.test(refNumber)) {
+        await sendText(sender_psid, "❌ Invalid reference number format. Please try again or type 'Menu' to cancel.");
+        return;
+    }
+
+    const ref = await db.getReference(refNumber);
+    if (!ref) {
+        await sendText(sender_psid, "❌ That reference number was not found in the database. Please try again.");
+        return;
+    }
+    
+    const response = `
+Editing Ref: ${ref.ref_number}
+Mod: ${ref.mod_name}
+Current Claims: ${ref.claims_used}/${ref.claims_max}
+
+Please provide the new values in the format: used,max (e.g., 0,5 or 1,3)
+    `;
+    await sendText(sender_psid, response);
+    stateManager.setUserState(sender_psid, 'awaiting_edit_claims_values', { refNumber });
+}
+
+async function processEditClaims_Step3_Update(sender_psid, text, sendText) {
+    const { refNumber } = stateManager.getUserState(sender_psid);
+    const parts = text.split(',');
+
+    if (parts.length !== 2) {
+        await sendText(sender_psid, "❌ Invalid format. Please use the format: used,max (e.g., 1,3). Please try again.");
+        return;
+    }
+
+    const newUsed = parseInt(parts[0].trim());
+    const newMax = parseInt(parts[1].trim());
+
+    if (isNaN(newUsed) || isNaN(newMax) || newUsed < 0 || newMax < 0) {
+        await sendText(sender_psid, "❌ Invalid numbers. Claims must be positive numbers. Please try again.");
+        return;
+    }
+
+    if (newUsed > newMax) {
+        await sendText(sender_psid, "❌ Error: 'Claims used' cannot be greater than 'claims max'. Please try again.");
+        return;
+    }
+
+    try {
+        await db.updateReferenceClaims(refNumber, newUsed, newMax);
+        await sendText(sender_psid, `✅ Claims for reference ${refNumber} have been updated to ${newUsed}/${newMax}.`);
+    } catch(e) {
+        await sendText(sender_psid, `❌ An error occurred during the update: ${e.message}`);
+    } finally {
+        stateManager.clearUserState(sender_psid);
+    }
+}
+
+
 module.exports = {
     showAdminMenu, handleViewReferences, promptForBulkAccounts_Step1_ModId, 
     processBulkAccounts_Step2_GetAccounts, processBulkAccounts_Step3_SaveAccounts,
@@ -521,5 +585,8 @@ module.exports = {
     processDeleteAccounts_Step2_ConfirmAndDelete,
     promptForBroadcast_Step1_GetMessage,
     processBroadcast_Step2_ConfirmAndSend,
-    processBroadcast_Step3_Execute
+    processBroadcast_Step3_Execute,
+    promptForEditClaims_Step1_GetRef,
+    promptForEditClaims_Step2_GetNewClaims,
+    processEditClaims_Step3_Update
 };
