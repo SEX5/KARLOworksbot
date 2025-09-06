@@ -98,6 +98,8 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_bulk_refs_list': return adminHandler.processBulkRefs_Step3_SaveRefs(sender_psid, messageText, sendText);
                 case 'awaiting_pause_toggle_psid': return adminHandler.processPauseToggle(sender_psid, messageText, sendText);
                 case 'awaiting_delete_accounts_mod_id': return adminHandler.processDeleteAccounts_Step2_ConfirmAndDelete(sender_psid, messageText, sendText);
+                case 'awaiting_broadcast_message': return adminHandler.processBroadcast_Step2_ConfirmAndSend(sender_psid, messageText, sendText);
+                case 'awaiting_broadcast_confirmation': return adminHandler.processBroadcast_Step3_Execute(sender_psid, messageText, sendText);
             }
         }
         switch (lowerCaseText) {
@@ -117,6 +119,7 @@ async function handleMessage(sender_psid, webhook_event) {
             case '14': return adminHandler.promptForPauseToggle_GetPSID(sender_psid, sendText);
             case '15': return adminHandler.toggleMaintenanceMode(sender_psid, sendText);
             case '16': return adminHandler.promptForDeleteAccounts_Step1_GetModId(sender_psid, sendText);
+            case '17': return adminHandler.promptForBroadcast_Step1_GetMessage(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
 
