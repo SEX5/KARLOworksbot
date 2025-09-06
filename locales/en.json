@@ -6,6 +6,7 @@
   "menu_option_4": "💰 4️⃣ Custom Gold/Money",
   "menu_option_5": "📩 5️⃣  Contact the admin",
   "menu_option_6": "🧾 6️⃣ View Proofs of Legitimacy",
+  "menu_option_7": "🚨 7️⃣ Report an account issue",
   "menu_suffix": "Just type the number of your choice! 😊",
   "admin_online": "The admin is currently online! 🟢\n\nYou can message them directly for assistance at:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nAlternatively, you can use the options below:",
   "admin_offline": "The admin is currently offline. 🔴\n\nYou can use the automated menu below for assistance.",
@@ -54,7 +55,12 @@
 
   "contact_admin_prompt": "📩 Got a question or need help?\nPlease type your message, and I’ll forward it to the admin right away!\n(Type 'Menu' to return to the main menu.)",
   "contact_admin_success": "✅ Your message has been sent to the admin!\nWe’ll get back to you as soon as possible. Thank you for reaching out! 🙌\n(Type 'Menu' to return to the main menu.)",
-  
+
+  "report_prompt_ref": "🚨 Understood. To help you with your account issue, please type the 13-digit GCash reference number you used for this purchase.\n(Type 'Menu' to return.)",
+  "report_not_found": "🔍 Sorry, I couldn't find that reference number. Please double-check and try again.\n(Type 'Menu' to return.)",
+  "report_prompt_issue": "✅ Thank you. Now, please describe the issue with your account. For example: 'Someone else is using my account' or 'I can't log in'.\n(Type 'Menu' to return.)",
+  "report_success_user": "✅ Your report has been received. An admin has been notified and will assist you with your issue as soon as possible. Thank you for your patience.\n(Type 'Menu' to return.)",
+
   "custom_mod_prompt": "💎 Custom Mods 💎\nPlease choose what you'd like to order:\n\n💰 *Custom Money:*\n- 5 to 10 Million: 150 PHP\n- 10 to 30 Million: 200 PHP\n\n✨ *Custom Gold:*\n- 1k to 6k Gold: 150 PHP\n\nTo order, please type your choice and the amount.\n*Examples:*\n- \"Money 8 Million\"\n- \"Gold 5k\"\n\n(Type 'Menu' to return to the main menu.)",
   "custom_mod_invalid_order": "🤔 I didn't quite understand that or the amount is outside the allowed range. Please try again using the format \"Money [amount]\" or \"Gold [amount]\".\n\n*Examples:*\n- Money 8 Million\n- Gold 5k\n\n(Type 'Menu' to return to the main menu.)",
   "custom_mod_prompt_payment": "✅ Great! You've requested *{orderAmount} {orderType}*.\n\nPlease send {price} PHP via GCash to:\n 👨🏻‍💻Karl Abalunan\n📞{gcashNumber}\n\n📲 After paying, please send a screenshot of your receipt here.\n(Type 'Menu' to return to the main menu after sending the receipt.)",
