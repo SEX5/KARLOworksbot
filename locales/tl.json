@@ -6,6 +6,7 @@
   "menu_option_4": "💰 4️⃣  Custom Gold/Money",
   "menu_option_5": "📩 5️⃣  Kausapin ang admin",
   "menu_option_6": "🧾 6️⃣ Tingnan ang mga patunay",
+  "menu_option_7": "🚨 7️⃣ I-report ang isyu sa account",
   "menu_suffix": "I-type lang ang number na napili mo! 😊",
   "admin_online": "Online ang admin ngayon! 🟢\n\nPuwede mo siyang i-message diretso para sa tulong sa link na ito:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nPwede ka ring pumili sa mga option sa baba:",
   "admin_offline": "Offline muna ang admin ngayon. 🔴\n\nPwede mong gamitin ang automated menu sa baba para sa tulong.",
@@ -54,6 +55,11 @@
 
   "contact_admin_prompt": "📩 May tanong ka o kailangan mo ng tulong?\nI-type mo lang ang message mo, at ipapasa ko agad sa admin!\n(I-type ang 'Menu' para bumalik.)",
   "contact_admin_success": "✅ Na-send na ang message mo sa admin!\nBabakikan ka namin sa lalong madaling panahon. Salamat sa pag-reach out! 🙌\n(I-type ang 'Menu' para bumalik.)",
+
+  "report_prompt_ref": "🚨 Naiintindihan ko. Para matulungan ka, paki-type ang 13-digit GCash reference number na ginamit mo para sa pagbili ng account na ito.\n(I-type ang 'Menu' para bumalik.)",
+  "report_not_found": "🔍 Paumanhin, hindi ko mahanap ang reference number na iyan. Paki-double check at subukang muli.\n(I-type ang 'Menu' para bumalik.)",
+  "report_prompt_issue": "✅ Salamat. Ngayon, paki-describe ang isyu sa iyong account. Halimbawa: 'May ibang gumagamit ng account ko' o 'Hindi ako makapag-log in'.\n(I-type ang 'Menu' para bumalik.)",
+  "report_success_user": "✅ Natanggap na namin ang iyong report. Na-notify na ang isang admin at aayusin nila ang isyu mo sa lalong madaling panahon. Maraming salamat sa iyong pasensya.\n(I-type ang 'Menu' para bumalik.)",
   
   "custom_mod_prompt": "💎 Custom Mods 💎\nPumili ka kung ano ang gusto mong i-order:\n\n💰 *Custom Money:*\n- 5 to 10 Million: 150 PHP\n- 10 to 30 Million: 200 PHP\n\n✨ *Custom Gold:*\n- 1k to 6k Gold: 150 PHP\n\nPara umorder, i-type ang pinili mo at ang amount.\n*Mga Example:*\n- \"Money 8 Million\"\n- \"Gold 5k\"\n\n(I-type ang 'Menu' para bumalik.)",
   "custom_mod_invalid_order": "🤔 Pasensya na, 'di ko naintindihan 'yun o wala sa range 'yung amount. Paki-try ulit gamit ang format na \"Money [amount]\" o \"Gold [amount]\".\n\n*Mga Example:*\n- Money 8 Million\n- Gold 5k\n\n(I-type ang 'Menu' para bumalik.)",
