@@ -100,6 +100,8 @@ async function handleMessage(sender_psid, webhook_event) {
                 case 'awaiting_delete_accounts_mod_id': return adminHandler.processDeleteAccounts_Step2_ConfirmAndDelete(sender_psid, messageText, sendText);
                 case 'awaiting_broadcast_message': return adminHandler.processBroadcast_Step2_ConfirmAndSend(sender_psid, messageText, sendText);
                 case 'awaiting_broadcast_confirmation': return adminHandler.processBroadcast_Step3_Execute(sender_psid, messageText, sendText);
+                case 'awaiting_edit_claims_ref': return adminHandler.promptForEditClaims_Step2_GetNewClaims(sender_psid, messageText, sendText);
+                case 'awaiting_edit_claims_values': return adminHandler.processEditClaims_Step3_Update(sender_psid, messageText, sendText);
             }
         }
         switch (lowerCaseText) {
@@ -120,6 +122,7 @@ async function handleMessage(sender_psid, webhook_event) {
             case '15': return adminHandler.toggleMaintenanceMode(sender_psid, sendText);
             case '16': return adminHandler.promptForDeleteAccounts_Step1_GetModId(sender_psid, sendText);
             case '17': return adminHandler.promptForBroadcast_Step1_GetMessage(sender_psid, sendText);
+            case '18': return adminHandler.promptForEditClaims_Step1_GetRef(sender_psid, sendText);
             default: return adminHandler.showAdminMenu(sender_psid, sendText);
         }
 
