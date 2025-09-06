@@ -36,6 +36,7 @@ Type 12: ⚡ Create account for user (Admin)
 Type 13: ➕ Add bulk reference numbers
 Type 14: ⏸️ Pause/Resume bot for a user
 Type 15: 🔧 Toggle Maintenance Mode (Currently: ${maintenanceStatus})
+Type 16: 🗑️ Delete accounts for a mod
 `;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
@@ -383,6 +384,46 @@ async function processBulkRefs_Step3_SaveRefs(sender_psid, text, sendText) {
     }
 }
 
+// --- NEW: Delete accounts for a mod ---
+async function promptForDeleteAccounts_Step1_GetModId(sender_psid, sendText) {
+    const mods = await db.getMods();
+    if (!mods || mods.length === 0) {
+        await sendText(sender_psid, "❌ There are no mods in the system. Cannot delete accounts.");
+        stateManager.clearUserState(sender_psid);
+        return;
+    }
+
+    let response = "Which mod's available accounts would you like to delete?\n\n";
+    mods.forEach(mod => {
+        response += `🔹 ID ${mod.id}: ${mod.name} (Stock: ${mod.stock})\n`;
+    });
+    response += `\nPlease reply with just the Mod ID number. This action is irreversible.`;
+    
+    await sendText(sender_psid, response);
+    stateManager.setUserState(sender_psid, 'awaiting_delete_accounts_mod_id');
+}
+
+async function processDeleteAccounts_Step2_ConfirmAndDelete(sender_psid, text, sendText) {
+    const modId = parseInt(text.trim());
+    const mod = await db.getModById(modId);
+
+    if (isNaN(modId) || !mod) {
+        await sendText(sender_psid, "❌ Invalid Mod ID. Please reply with a valid number from the list or type 'Menu' to cancel.");
+        return;
+    }
+
+    try {
+        const deletedCount = await db.deleteAvailableAccountsByModId(modId);
+        await sendText(sender_psid, `✅ Success! Deleted ${deletedCount} available replacement account(s) for Mod ${mod.id} (${mod.name}).`);
+    } catch (e) {
+        console.error("Error deleting bulk accounts:", e);
+        await sendText(sender_psid, `An unexpected error occurred: ${e.message}`);
+    } finally {
+        stateManager.clearUserState(sender_psid);
+    }
+}
+// --- End of new functions ---
+
 module.exports = {
     showAdminMenu, handleViewReferences, promptForBulkAccounts_Step1_ModId, 
     processBulkAccounts_Step2_GetAccounts, processBulkAccounts_Step3_SaveAccounts,
@@ -403,5 +444,7 @@ module.exports = {
     processBulkRefs_Step2_GetRefs,
     processBulkRefs_Step3_SaveRefs,
     promptForPauseToggle_GetPSID,
-    processPauseToggle
+    processPauseToggle,
+    promptForDeleteAccounts_Step1_GetModId,
+    processDeleteAccounts_Step2_ConfirmAndDelete
 };
