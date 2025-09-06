@@ -30,7 +30,7 @@ async function setupDatabase() {
     try {
         console.log('Connecting to Supabase PostgreSQL database...');
         await client.query('BEGIN');
-        await client.query(`CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY, gcash_number TEXT, is_online BOOLEAN DEFAULT FALSE)`);
+        await client.query(`CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY, gcash_number TEXT, is_online BOOLEAN DEFAULT FALSE, is_maintenance_mode BOOLEAN DEFAULT FALSE)`);
         await client.query(`CREATE TABLE IF NOT EXISTS mods (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, price REAL DEFAULT 0, image_url TEXT, default_claims_max INTEGER DEFAULT 3, x_coordinate REAL, y_coordinate REAL)`);
         await client.query(`CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, mod_id INTEGER NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, is_available BOOLEAN DEFAULT TRUE, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
         // FIXED TYPO HERE: TIMESTPTZ -> TIMESTAMPTZ
@@ -77,6 +77,7 @@ async function claimAccount(accountId) { await getDb().query('UPDATE accounts SE
 async function useClaim(refNumber) { await getDb().query('UPDATE "references" SET claims_used = claims_used + 1, last_replacement_timestamp = CURRENT_TIMESTAMP WHERE ref_number = $1', [refNumber]); }
 async function addMod(id, name, description, price, imageUrl, defaultClaimsMax) { await getDb().query('INSERT INTO mods (id, name, description, price, image_url, default_claims_max) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT(id) DO NOTHING', [id, name, description, price, imageUrl, defaultClaimsMax]); }
 async function getModsByPrice(price) { const res = await getDb().query('SELECT * FROM mods WHERE price BETWEEN $1 AND $2', [price - 0.01, price + 0.01]); return res.rows; }
+async function deleteAvailableAccountsByModId(modId) { const query = 'DELETE FROM accounts WHERE mod_id = $1 AND is_available = TRUE'; const res = await getDb().query(query, [modId]); return res.rowCount; }
 
 async function addBulkReferences(modId, refNumbers) {
     const client = await getDb().connect();
@@ -117,4 +118,4 @@ async function addBulkReferences(modId, refNumbers) {
     return { successfulAdds, duplicates, invalids };
 }
 
-module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, setMaintenanceMode, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, addBulkReferences, isUserPaused, pauseUser, resumeUser };
+module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, setMaintenanceMode, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, addBulkReferences, isUserPaused, pauseUser, resumeUser, deleteAvailableAccountsByModId };
