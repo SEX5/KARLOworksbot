@@ -34,7 +34,7 @@ async function setupDatabase() {
         await client.query(`CREATE TABLE IF NOT EXISTS mods (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, price REAL DEFAULT 0, image_url TEXT, default_claims_max INTEGER DEFAULT 3, x_coordinate REAL, y_coordinate REAL)`);
         await client.query(`CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, mod_id INTEGER NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, is_available BOOLEAN DEFAULT TRUE, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
         // FIXED TYPO HERE: TIMESTPTZ -> TIMESTAMPTZ
-        await client.query(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
+        await client.query(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, last_replacement_timestamp TIMESTAMPTZ, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
         // FIXED TYPO HERE: TIMESTPTZ -> TIMESTAMPTZ
         await client.query(`CREATE TABLE IF NOT EXISTS creation_jobs ( job_id SERIAL PRIMARY KEY, user_psid TEXT NOT NULL, email TEXT NOT NULL, password TEXT NOT NULL, mod_id INTEGER NOT NULL, status VARCHAR(20) DEFAULT 'pending', result_message TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP )`);
         // --- ADDED ---
@@ -45,6 +45,7 @@ async function setupDatabase() {
         try { await client.query('ALTER TABLE admins ADD COLUMN is_online BOOLEAN DEFAULT FALSE'); console.log('Verified "is_online" column in admins table.'); } catch (e) { if (e.code !== '42701') { throw e; } }
         try { await client.query('ALTER TABLE mods ADD COLUMN x_coordinate REAL'); await client.query('ALTER TABLE mods ADD COLUMN y_coordinate REAL'); console.log('Verified coordinate columns in mods table.'); } catch (e) { if (e.code !== '42701') { throw e; } }
         try { await client.query('ALTER TABLE "references" ADD COLUMN last_replacement_timestamp TIMESTAMPTZ'); console.log('Verified "last_replacement_timestamp" column in references table.'); } catch(e) { if (e.code !== '42701') { throw e; } }
+        try { await client.query('ALTER TABLE admins ADD COLUMN is_maintenance_mode BOOLEAN DEFAULT FALSE'); console.log('Verified "is_maintenance_mode" column in admins table.'); } catch(e) { if (e.code !== '42701') { throw e; } }
     } catch (error) { await client.query('ROLLBACK'); console.error('FATAL: Could not set up Supabase database:', error.message); throw error; } finally { client.release(); }
 }
 // --- ADDED FUNCTIONS ---
@@ -57,6 +58,7 @@ async function updateJobStatus(jobId, newStatus) { const query = `UPDATE creatio
 async function getStalePendingJobs(minutes = 20) { const query = ` SELECT job_id FROM creation_jobs WHERE status = 'pending' AND created_at < NOW() - INTERVAL '${minutes} minutes' `; const res = await getDb().query(query); return res.rows; }
 async function deleteReference(refNumber) { const res = await getDb().query('DELETE FROM "references" WHERE ref_number = $1', [refNumber]); return res.rowCount; }
 async function setAdminOnlineStatus(isOnline) { await getDb().query('UPDATE admins SET is_online = $1', [isOnline]); }
+async function setMaintenanceMode(isMaintenance) { await getDb().query('UPDATE admins SET is_maintenance_mode = $1', [isMaintenance]); }
 async function createAccountCreationJob(user_psid, email, password, modId) { const query = 'INSERT INTO creation_jobs (user_psid, email, password, mod_id) VALUES ($1, $2, $3, $4) RETURNING job_id'; const res = await getDb().query(query, [user_psid, email, password, modId]); return res.rows[0].job_id; }
 async function getCreationJobs() { const query = 'SELECT job_id, user_psid, status, result_message FROM creation_jobs ORDER BY created_at DESC LIMIT 15'; const res = await getDb().query(query); return res.rows; }
 async function isAdmin(userId) { const res = await getDb().query('SELECT * FROM admins WHERE user_id = $1', [userId]); return res.rows[0] || null; }
@@ -115,4 +117,4 @@ async function addBulkReferences(modId, refNumbers) {
     return { successfulAdds, duplicates, invalids };
 }
 
-module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, addBulkReferences, isUserPaused, pauseUser, resumeUser };
+module.exports = { setupDatabase, getActionableJobs, updateJobStatus, getStalePendingJobs, deleteReference, setAdminOnlineStatus, setMaintenanceMode, createAccountCreationJob, getCreationJobs, isAdmin, getAdminInfo, updateAdminInfo, getAllReferences, addBulkAccounts, updateModDetails, updateReferenceMod, addReference, getMods, getModById, getReference, getAvailableAccount, claimAccount, useClaim, addMod, getModsByPrice, addBulkReferences, isUserPaused, pauseUser, resumeUser };
