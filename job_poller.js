@@ -16,8 +16,10 @@ async function pollForJobUpdates() {
         // 1. Handle COMPLETED and FAILED jobs
         const actionableJobs = await dbManager.getActionableJobs();
         for (const job of actionableJobs) {
-            // FIX: Use the language fetched from the database for the user
-            const userLang = job.lang || 'en'; 
+            // Since this is a background task, we can't easily get the user's chosen language.
+            // We'll default to English. A more complex solution could store the language
+            // in the jobs table itself during creation.
+            const userLang = 'en'; 
 
             if (job.status === 'completed') {
                 console.log(`[Poller] Processing completed job ${job.job_id} for user ${job.user_psid}`);
@@ -27,7 +29,7 @@ async function pollForJobUpdates() {
             } 
             else if (job.status === 'failed') {
                 console.log(`[Poller] Processing failed job ${job.job_id} for user ${job.user_psid}`);
-                // Notify user in their chosen language
+                // Notify user
                 await sendText(job.user_psid, lang.getText('delivery_failed_user', userLang));
                 // Notify admin with details
                 const adminMessage = `
@@ -70,3 +72,4 @@ function start() {
 module.exports = {
     start
 };
+ 
