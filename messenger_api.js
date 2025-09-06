@@ -4,6 +4,11 @@ const secrets = require('./secrets.js');
 
 const { PAGE_ACCESS_TOKEN } = secrets;
 
+/**
+ * Sends a text message to a user.
+ * @param {string} psid - The user's Page-Scoped ID.
+ * @param {string} text - The message to send.
+ */
 async function sendText(psid, text) {
     const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
     try {
@@ -13,40 +18,29 @@ async function sendText(psid, text) {
     }
 }
 
-async function sendQuickReplies(psid, text, replies) {
-    const messageData = {
-        recipient: { id: psid },
-        messaging_type: "RESPONSE",
-        message: {
-            text: text,
-            quick_replies: replies.map(reply => ({
-                content_type: "text",
-                title: reply.title,
-                payload: reply.payload
-            }))
-        }
-    };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending quick replies:", error.response?.data || error.message);
-    }
-}
-
+/**
+ * Sends an image message to a user.
+ * @param {string} psid - The user's Page-Scoped ID.
+ * @param {string} imageUrl - The public URL of the image to send.
+ */
 async function sendImage(psid, imageUrl) {
     const messageData = {
         recipient: { id: psid },
         message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } },
         messaging_type: "RESPONSE"
     };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    try { 
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); 
     }
-    catch (error) {
-        console.error("Error sending image message:", error.response?.data || error.message);
+    catch (error) { 
+        console.error("Error sending image message:", error.response?.data || error.message); 
     }
 }
 
+/**
+ * Fetches a user's first and last name from the Messenger API.
+ * Caches the result to avoid repeated API calls for the same user.
+ */
 const userProfileCache = new Map();
 async function getUserProfile(psid) {
     if (userProfileCache.has(psid)) {
@@ -57,19 +51,18 @@ async function getUserProfile(psid) {
         const response = await axios.get(url);
         if (response.data) {
             const fullName = `${response.data.first_name} ${response.data.last_name}`;
-            userProfileCache.set(psid, fullName);
+            userProfileCache.set(psid, fullName); // Cache the name
             return fullName;
         }
     } catch (error) {
         console.error(`Failed to fetch user profile for ${psid}:`, error.response?.data || error.message);
-        return psid;
+        return psid; // Fallback to the ID if the API call fails
     }
-    return psid;
+    return psid; // Fallback
 }
 
 module.exports = {
     sendText,
     sendImage,
-    getUserProfile,
-    sendQuickReplies
-}; 
+    getUserProfile
+};
