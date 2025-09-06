@@ -38,6 +38,7 @@
 
   "error_duplicate_ref": "⚠️ This reference number has already been used.\nPlease contact an admin if you believe this is a mistake.\n(Type 'Menu' to return to the main menu.)",
   "error_unexpected": "🔧 An unexpected error occurred. An admin has been notified. Please try again later.\n(Type 'Menu' to return to the main menu.)",
+  "error_unexpected_user": "🔧 Oops! Something went wrong on our end. Don't worry, our admin has been notified and will look into it. Please type 'Menu' to try again. Thank you for your patience!",
   "error_no_mods_found": "⚠️ An issue occurred (no mods found). An admin has been notified.\n(Type 'Menu' to return to the main menu.)",
 
   "claims_check_prompt": "🔍 Want to check how many replacements you have left?\nPlease enter your 13-digit GCash reference number! Remove any spaces before sending the reference number. Example 123456789123:\n(Type 'Menu' to return to the main menu.)",
