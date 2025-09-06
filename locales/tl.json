@@ -9,6 +9,7 @@
   "menu_suffix": "I-type lang ang number na napili mo! 😊",
   "admin_online": "Online ang admin ngayon! 🟢\n\nPuwede mo siyang i-message diretso para sa tulong sa link na ito:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nPwede ka ring pumili sa mga option sa baba:",
   "admin_offline": "Offline muna ang admin ngayon. 🔴\n\nPwede mong gamitin ang automated menu sa baba para sa tulong.",
+  "maintenance_mode_message": "Kasalukuyan po kaming naka-maintenance. Magbabalik kami kaagad! Salamat sa iyong pasensya. 🙏",
 
   "manual_entry_start": "😔 Ay, sorry! Hindi ko mabasa 'yung resibo mo.\nPero 'wag mag-alala, puwede nating i-register 'yan manually! 🙌\nPaki-type ang iyong 13-digit GCash reference number. 'Wag lagyan ng space. Example: 123456789123:\n(I-type ang 'Menu' para bumalik.)",
   "manual_entry_invalid_ref": "❌ Mukhang hindi valid 'yung 13-digit reference number na nilagay mo.\nPaki-double check at subukan ulit. Example: 1234567890123\n(I-type ang 'Menu' para bumalik.)",
