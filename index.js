@@ -1,4 +1,4 @@
-// index.js (Fully Complete Version)
+// index.js (Final Complete Version)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -15,7 +15,6 @@ const app = express();
 app.use(express.json());
 const { VERIFY_TOKEN, ADMIN_ID } = secrets;
 
-// --- Centralized Error Handler ---
 async function handleError(error, sender_psid, context = 'Unknown') {
     console.error(`--- ERROR ---`);
     console.error(`Context: ${context}`);
@@ -81,6 +80,7 @@ async function handleMessage(sender_psid, webhook_event) {
         }
 
         if (isAdmin) {
+            // Admin logic remains purely text-based
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
             if (lowerCaseText === 'menu') {
@@ -143,6 +143,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 default: return adminHandler.showAdminMenu(sender_psid, sendText);
             }
         } else {
+            // --- USER LOGIC ---
             const isPaused = await dbManager.isUserPaused(sender_psid);
             if (isPaused) return;
 
@@ -184,7 +185,7 @@ async function handleMessage(sender_psid, webhook_event) {
             if (!received_text || received_text === '' || webhook_event.message?.sticker_id) {
                 return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
             }
-            if (lowerCaseText === 'menu' || lowerCaseText === 'payload_menu') {
+            if (lowerCaseText === 'menu') {
                 stateManager.clearUserState(sender_psid);
                 stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
                 return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
@@ -194,12 +195,12 @@ async function handleMessage(sender_psid, webhook_event) {
             const state = userStateObj?.state;
             if (state) {
                 switch (state) {
+                    case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, received_text, sendText, userLang);
                     case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, received_text, sendText, userLang);
                     case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, received_text, sendText, sendImage, ADMIN_ID, userLang);
                     case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, received_text, sendText, userLang);
                     case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, lowerCaseText, sendText, ADMIN_ID, userLang);
                     case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, received_text, sendText, sendQuickReplies, ADMIN_ID, userLang);
-                    case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, received_text, sendText, userLang);
                     case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, received_text, sendText, userLang);
                     case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, received_text, sendText, userLang);
                     case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, received_text, sendText, ADMIN_ID, userLang);
@@ -207,12 +208,12 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
             }
             switch (lowerCaseText) {
-                case 'payload_view_mods': return userHandler.handleViewMods(sender_psid, sendText, userLang);
-                case 'payload_check_claims': return userHandler.promptForCheckClaims(sender_psid, sendText, userLang);
-                case 'payload_request_replacement': return userHandler.promptForReplacement(sender_psid, sendText, userLang);
-                case 'payload_custom_mod': return userHandler.promptForCustomMod(sender_psid, sendText, userLang);
-                case 'payload_contact_admin': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
-                case 'payload_view_proofs': return userHandler.handleViewProofs(sender_psid, sendText, userLang);
+                case '1': return userHandler.handleViewMods(sender_psid, sendText, userLang);
+                case '2': return userHandler.promptForCheckClaims(sender_psid, sendText, userLang);
+                case '3': return userHandler.promptForReplacement(sender_psid, sendText, userLang);
+                case '4': return userHandler.promptForCustomMod(sender_psid, sendText, userLang);
+                case '5': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
+                case '6': return userHandler.handleViewProofs(sender_psid, sendText, userLang);
                 default: return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
             }
         }
