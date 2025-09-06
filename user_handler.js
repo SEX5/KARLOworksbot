@@ -31,6 +31,7 @@ ${lang.getText('menu_option_3', userLang)}
 ${lang.getText('menu_option_4', userLang)}
 ${lang.getText('menu_option_5', userLang)}
 ${lang.getText('menu_option_6', userLang)}
+${lang.getText('menu_option_7', userLang)}
 ${lang.getText('menu_suffix', userLang)}`;
     await sendText(sender_psid, menu);
 }
@@ -487,6 +488,60 @@ async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID, user
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
+// --- NEW: Report Account Issue ---
+async function promptForReport(sender_psid, sendText, userLang = 'en') {
+    await sendText(sender_psid, lang.getText('report_prompt_ref', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_report_ref', { lang: userLang });
+}
+
+async function handleReportReference(sender_psid, text, sendText, userLang = 'en') {
+    const refNumber = text.trim();
+    if (!/^\d{13}$/.test(refNumber)) {
+        await sendText(sender_psid, lang.getText('claims_check_invalid_format', userLang));
+        return;
+    }
+
+    const ref = await db.getReference(refNumber);
+    if (!ref) {
+        await sendText(sender_psid, lang.getText('report_not_found', userLang));
+        return;
+    }
+
+    await sendText(sender_psid, lang.getText('report_prompt_issue', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_report_issue', { refNumber, lang: userLang });
+}
+
+async function forwardReportToAdmin(sender_psid, text, sendText, ADMIN_ID, userLang = 'en') {
+    try {
+        const { refNumber } = stateManager.getUserState(sender_psid);
+        const userName = await messengerApi.getUserProfile(sender_psid);
+        const issueDescription = text.trim();
+
+        const adminNotification = `
+        🚨 ACCOUNT ISSUE REPORT 🚨
+        ---
+        User: ${userName}
+        PSID: ${sender_psid}
+        Ref No: ${refNumber}
+        ---
+        Issue Reported:
+        "${issueDescription}"
+        ---
+        Please contact the user to resolve this issue and provide a manual replacement if necessary.
+        `;
+
+        await sendText(ADMIN_ID, adminNotification);
+        await sendText(sender_psid, lang.getText('report_success_user', userLang));
+
+    } catch (e) {
+        await handleUserError(e, sender_psid, userLang, 'Forwarding Account Report');
+    } finally {
+        stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+    }
+}
+
+
 module.exports = {
     showUserMenu,
     handleViewMods,
@@ -507,5 +562,8 @@ module.exports = {
     promptForCustomMod,
     handleCustomModOrder,
     handleCustomModReceipt,
-    handleViewProofs
-};
+    handleViewProofs,
+    promptForReport,
+    handleReportReference,
+    forwardReportToAdmin
+}; 
