@@ -38,6 +38,7 @@
 
   "error_duplicate_ref": "⚠️ Nagamit na ang reference number na ito.\nMaki-contact sa admin kung sa tingin mo ay may pagkakamali.\n(I-type ang 'Menu' para bumalik.)",
   "error_unexpected": "🔧 Nagkaroon ng error. Na-notify na ang admin. Paki-try na lang ulit mamaya.\n(I-type ang 'Menu' para bumalik.)",
+  "error_unexpected_user": "🔧 Ay, pasensya na! Nagkaroon ng technical issue. Na-notify na ang aming admin para ayusin ito. Paki-type ang 'Menu' para subukang muli. Salamat sa iyong pag-unawa!",
   "error_no_mods_found": "⚠️ Nagkaroon ng issue (walang mods na nahanap). Na-notify na ang admin.\n(I-type ang 'Menu' para bumalik.)",
 
   "claims_check_prompt": "🔍 Gusto mo bang i-check kung ilang replacements na lang ang natitira sa'yo?\nPaki-enter ang iyong 13-digit GCash reference number. 'Wag lagyan ng space. Example: 123456789123:\n(I-type ang 'Menu' para bumalik.)",
