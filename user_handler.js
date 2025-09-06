@@ -425,7 +425,26 @@ async function processReplacementRequest(sender_psid, refNumber, sendText, userL
         return sendText(sender_psid, lang.getText('claims_check_invalid_format', userLang));
     }
     const ref = await db.getReference(refNumber);
-    if (!ref || ref.claims_used >= ref.claims_max) {
+    if (!ref) {
+        await sendText(sender_psid, lang.getText('claims_check_not_found', userLang));
+        stateManager.clearUserState(sender_psid);
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+        return;
+    }
+
+    if (ref.last_replacement_timestamp) {
+        const lastClaimTime = new Date(ref.last_replacement_timestamp).getTime();
+        const currentTime = new Date().getTime();
+        const twentyFourHoursInMillis = 24 * 60 * 60 * 1000;
+        if (currentTime - lastClaimTime < twentyFourHoursInMillis) {
+            await sendText(sender_psid, lang.getText('replace_limit_reached', userLang));
+            stateManager.clearUserState(sender_psid);
+            stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+            return;
+        }
+    }
+
+    if (ref.claims_used >= ref.claims_max) {
         await sendText(sender_psid, lang.getText('replace_no_claims', userLang));
         stateManager.clearUserState(sender_psid);
         stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
@@ -486,4 +505,3 @@ module.exports = {
     handleCustomModReceipt,
     handleViewProofs
 };
- 
