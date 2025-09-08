@@ -1,4 +1,4 @@
-// user_handler.js (Complete Final Version)
+// user_handler.js (Complete Final Version with ALL fixes)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
@@ -194,58 +194,103 @@ async function handleEmailForPurchase(sender_psid, text, sendText, userLang = 'e
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, lang: userLang });
 }
 
-// --- Custom Mod Functions ---
+// --- Custom Mod Functions (NEW STEP-BY-STEP FLOW) ---
+
+// Step 1: Show options
 async function promptForCustomMod(sender_psid, sendText, userLang = 'en') {
-    await messengerApi.sendQuickReplies(sender_psid, lang.getText('custom_mod_prompt', userLang), [menuReply(userLang)]);
-    stateManager.setUserState(sender_psid, 'awaiting_custom_mod_order', { lang: userLang });
+    const promptText = lang.getText('custom_mod_prompt_choice', userLang);
+    const replies = [
+        { title: "💰 Order Money", payload: "order_money" },
+        { title: "✨ Order Gold", payload: "order_gold" },
+        menuReply(userLang)
+    ];
+    await messengerApi.sendQuickReplies(sender_psid, promptText, replies);
+    stateManager.setUserState(sender_psid, 'awaiting_custom_mod_choice', { lang: userLang });
 }
 
-async function handleCustomModOrder(sender_psid, text, sendText, userLang = 'en') {
-    const orderText = text.toLowerCase().trim();
-    let orderType = '';
-    let orderAmount = '';
+// Step 2: Handle choice and ask for amount
+async function handleCustomModChoice(sender_psid, text, sendText, userLang = 'en') {
+    const choice = text.toLowerCase();
+    if (choice === 'order_money') {
+        const promptText = lang.getText('custom_mod_prompt_money', userLang);
+        await messengerApi.sendQuickReplies(sender_psid, promptText, [menuReply(userLang)]);
+        stateManager.setUserState(sender_psid, 'awaiting_custom_money_amount', { lang: userLang });
+    } else if (choice === 'order_gold') {
+        const promptText = lang.getText('custom_mod_prompt_gold', userLang);
+        await messengerApi.sendQuickReplies(sender_psid, promptText, [menuReply(userLang)]);
+        stateManager.setUserState(sender_psid, 'awaiting_custom_gold_amount', { lang: userLang });
+    } else {
+        // Fallback if they type something weird
+        await promptForCustomMod(sender_psid, sendText, userLang);
+    }
+}
+
+// Step 3a: Process Money amount
+async function processCustomMoneyOrder(sender_psid, text, sendText, userLang = 'en') {
+    const orderAmount = text.trim();
+    const amountMil = parseFloat(orderAmount.replace(/[^0-9.]/g, ''));
     let price = 0;
 
-    if (orderText.startsWith('money')) {
-        orderType = 'Money';
-        orderAmount = text.substring(5).trim();
-        const amountMil = parseFloat(orderAmount.replace(/[^0-9.]/g, ''));
-        if (amountMil >= 5 && amountMil <= 10) {
-            price = 150;
-        } else if (amountMil > 10 && amountMil <= 30) {
-            price = 200;
-        }
-    } else if (orderText.startsWith('gold')) {
-        orderType = 'Gold';
-        orderAmount = text.substring(4).trim();
-        const amountK = parseFloat(orderAmount.replace(/[^0-9.]/g, ''));
-        if (amountK >= 1 && amountK <= 6) {
-            price = 150;
-        }
+    if (amountMil >= 5 && amountMil <= 10) {
+        price = 150;
+    } else if (amountMil > 10 && amountMil <= 30) {
+        price = 200;
     }
 
     if (price === 0) {
-        await messengerApi.sendQuickReplies(sender_psid, lang.getText('custom_mod_invalid_order', userLang), [menuReply(userLang)]);
+        await messengerApi.sendQuickReplies(sender_psid, lang.getText('custom_mod_invalid_money', userLang), [menuReply(userLang)]);
         return;
     }
-
+    
+    // Proceed to payment
     const adminInfo = await db.getAdminInfo();
     const gcashNumber = adminInfo?.gcash_number || "09123963204";
-
     const paymentMsg = lang.getText('custom_mod_prompt_payment', userLang)
         .replace('{orderAmount}', orderAmount)
-        .replace('{orderType}', orderType)
+        .replace('{orderType}', 'Money')
         .replace('{price}', price)
         .replace('{gcashNumber}', gcashNumber);
     await messengerApi.sendQuickReplies(sender_psid, paymentMsg, [menuReply(userLang)]);
-    
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_custom_mod', {
-        orderType,
+        orderType: 'Money',
         orderAmount,
         price,
         lang: userLang
     });
 }
+
+// Step 3b: Process Gold amount
+async function processCustomGoldOrder(sender_psid, text, sendText, userLang = 'en') {
+    const orderAmount = text.trim();
+    const amountK = parseFloat(orderAmount.replace(/[^0-9.]/g, ''));
+    let price = 0;
+
+    if (amountK >= 1 && amountK <= 6) {
+        price = 150;
+    }
+
+    if (price === 0) {
+        await messengerApi.sendQuickReplies(sender_psid, lang.getText('custom_mod_invalid_gold', userLang), [menuReply(userLang)]);
+        return;
+    }
+    
+    // Proceed to payment
+    const adminInfo = await db.getAdminInfo();
+    const gcashNumber = adminInfo?.gcash_number || "09123963204";
+    const paymentMsg = lang.getText('custom_mod_prompt_payment', userLang)
+        .replace('{orderAmount}', orderAmount)
+        .replace('{orderType}', 'Gold')
+        .replace('{price}', price)
+        .replace('{gcashNumber}', gcashNumber);
+    await messengerApi.sendQuickReplies(sender_psid, paymentMsg, [menuReply(userLang)]);
+    stateManager.setUserState(sender_psid, 'awaiting_receipt_for_custom_mod', {
+        orderType: 'Gold',
+        orderAmount,
+        price,
+        lang: userLang
+    });
+}
+
 
 async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang = 'en') {
     const { orderType, orderAmount, price } = stateManager.getUserState(sender_psid);
@@ -574,7 +619,9 @@ module.exports = {
     handleManualReference,
     handleManualModSelection,
     promptForCustomMod,
-    handleCustomModOrder,
+    handleCustomModChoice,
+    processCustomMoneyOrder,
+    processCustomGoldOrder,
     handleCustomModReceipt,
     promptForReport,
     handleReportReference,
