@@ -1,4 +1,4 @@
-// user_handler.js (Complete Final Version with ALL fixes)
+// user_handler.js (Corrected Version)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
@@ -290,7 +290,6 @@ async function processCustomGoldOrder(sender_psid, text, sendText, userLang = 'e
         lang: userLang
     });
 }
-
 
 async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang = 'en') {
     const { orderType, orderAmount, price } = stateManager.getUserState(sender_psid);
