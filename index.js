@@ -21,8 +21,7 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
     const userState = stateManager.getUserState(sender_psid);
     const userLang = userState?.lang || 'en';
     
-    // The "Analyzing" message is now sent from here, after the state is secured.
-    await sendText(sender_psid, lang.getText('receipt_analyzing', userLang));
+    // The "Analyzing" message is now sent from handleMessage, before this function is called.
     try {
         const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
@@ -148,19 +147,24 @@ async function handleMessage(sender_psid, webhook_event) {
 
             // --- RACE CONDITION FIX STARTS HERE ---
             const isExpectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
-            const isProcessingReceipt = userStateObj?.state === 'processing_receipt' || userStateObj?.state === 'processing_receipt_custom';
-
+            
             // IF an image is received while expecting one:
             if (isExpectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image' && !webhook_event.message?.sticker_id) {
                 const imageUrl = webhook_event.message.attachments[0].payload.url;
                 const nextState = userStateObj.state === 'awaiting_receipt_for_purchase' ? 'processing_receipt' : 'processing_receipt_custom';
+                
                 // Immediately set state to "processing" to lock out other messages
                 stateManager.setUserState(sender_psid, nextState, { ...userStateObj, lang: userLang });
+                
+                // Send the "Analyzing" message immediately after locking the state and before the async handler
+                await sendText(sender_psid, lang.getText('receipt_analyzing', userLang));
+                
                 await handleReceiptSubmission(sender_psid, imageUrl);
                 return;
             }
 
             // IF a text message is received while an image is being processed:
+            const isProcessingReceipt = userStateObj?.state === 'processing_receipt' || userStateObj?.state === 'processing_receipt_custom';
             if (isProcessingReceipt && messageText) {
                 await sendText(sender_psid, lang.getText('processing_receipt_wait', userLang));
                 return;
