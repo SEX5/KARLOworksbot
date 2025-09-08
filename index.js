@@ -21,7 +21,8 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
     const userState = stateManager.getUserState(sender_psid);
     const userLang = userState?.lang || 'en';
     
-    await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
+    // The "Analyzing" message is now sent from here, after the state is secured.
+    await sendText(sender_psid, lang.getText('receipt_analyzing', userLang));
     try {
         const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
@@ -36,7 +37,7 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
         fs.writeFileSync(imagePath, imageBuffer);
 
-        if (userState?.state === 'awaiting_receipt_for_custom_mod') {
+        if (userState?.state === 'processing_receipt_custom') {
              await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
         } else {
              await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, sendImage, ADMIN_ID, userLang);
@@ -47,7 +48,7 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const userLang = userState?.lang || 'en';
     
         // If the error happens during a standard purchase, try the manual fallback
-        if (userState?.state === 'awaiting_receipt_for_purchase') {
+        if (userState?.state === 'processing_receipt') {
             console.warn(`Receipt analysis failed for user ${sender_psid}, initiating manual flow. Error: ${error.message}`);
             await userHandler.startManualEntryFlow(sender_psid, sendText, sendImage, imageUrl, userLang);
         } else {
@@ -134,64 +135,62 @@ async function handleMessage(sender_psid, webhook_event) {
 
         } else {
             // --- USER LOGIC ---
-            // Check for maintenance mode first. If it's on, stop all user interactions.
+            const userStateObj = stateManager.getUserState(sender_psid);
+            const userLang = userStateObj?.lang || 'en';
+
             if (adminInfo && adminInfo.is_maintenance_mode) {
-                const userStateObj = stateManager.getUserState(sender_psid);
-                const userLang = userStateObj?.lang || 'en'; // Default to English if language not set
                 await sendText(sender_psid, lang.getText('maintenance_mode_message', userLang));
-                return; // Stop processing for the user
-            }
-            
-            // --- ADDED PAUSE CHECK ---
-            const isPaused = await dbManager.isUserPaused(sender_psid);
-            if (isPaused) {
-                // If the user is paused, do nothing and exit the function.
-                // This allows an admin to talk to them without the bot interfering.
                 return;
             }
-            // --- END PAUSE CHECK ---
+            
+            const isPaused = await dbManager.isUserPaused(sender_psid);
+            if (isPaused) { return; }
 
-            const userStateObj = stateManager.getUserState(sender_psid);
+            // --- RACE CONDITION FIX STARTS HERE ---
+            const isExpectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
+            const isProcessingReceipt = userStateObj?.state === 'processing_receipt' || userStateObj?.state === 'processing_receipt_custom';
+
+            // IF an image is received while expecting one:
+            if (isExpectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image' && !webhook_event.message?.sticker_id) {
+                const imageUrl = webhook_event.message.attachments[0].payload.url;
+                const nextState = userStateObj.state === 'awaiting_receipt_for_purchase' ? 'processing_receipt' : 'processing_receipt_custom';
+                // Immediately set state to "processing" to lock out other messages
+                stateManager.setUserState(sender_psid, nextState, { ...userStateObj, lang: userLang });
+                await handleReceiptSubmission(sender_psid, imageUrl);
+                return;
+            }
+
+            // IF a text message is received while an image is being processed:
+            if (isProcessingReceipt && messageText) {
+                await sendText(sender_psid, lang.getText('processing_receipt_wait', userLang));
+                return;
+            }
+            
+            // IF a text message is received INSTEAD of an image:
+            if (isExpectingReceipt && messageText) {
+                await sendText(sender_psid, lang.getText('receipt_cancelled_text_instead', userLang));
+                stateManager.clearUserState(sender_psid);
+                stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+                return;
+            }
+            // --- RACE CONDITION FIX ENDS HERE ---
 
             if (!userStateObj || !userStateObj.lang) {
                 if (lowerCaseText === 'english' || lowerCaseText === '1') {
                     stateManager.setUserState(sender_psid, 'language_set', { lang: 'en' });
                     await userHandler.showUserMenu(sender_psid, sendText, 'en');
-                    return;
                 } else if (lowerCaseText === 'tagalog' || lowerCaseText === '2') {
                     stateManager.setUserState(sender_psid, 'language_set', { lang: 'tl' });
                     await userHandler.showUserMenu(sender_psid, sendText, 'tl');
-                    return;
                 } else {
                     const langPrompt = "Please select your language:";
-                    const replies = [
-                        { title: "English", payload: "1" },
-                        { title: "Tagalog", payload: "2" }
-                    ];
+                    const replies = [{ title: "English", payload: "1" }, { title: "Tagalog", payload: "2" }];
                     await sendQuickReplies(sender_psid, langPrompt, replies);
                     stateManager.setUserState(sender_psid, 'awaiting_language_choice', {});
-                    return;
-                }
-            }
-            
-            const userLang = userStateObj.lang;
-            const expectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
-
-            if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
-                if (!webhook_event.message?.sticker_id) {
-                    const imageUrl = webhook_event.message.attachments[0].payload.url;
-                    await handleReceiptSubmission(sender_psid, imageUrl);
                 }
                 return;
             }
             
-            if (expectingReceipt && messageText) {
-                await sendText(sender_psid, "It looks like you sent a message instead of a receipt, so the purchase has been cancelled. Feel free to start again from the menu! 😊");
-                stateManager.clearUserState(sender_psid);
-                stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-                return;
-            }
-
             if (!messageText || messageText === '' || webhook_event.message?.sticker_id) {
                 return userHandler.showUserMenu(sender_psid, sendText, userLang);
             }
@@ -218,7 +217,9 @@ async function handleMessage(sender_psid, webhook_event) {
                     case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, messageText, sendText, userLang);
                     case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, messageText, sendText, userLang);
                     case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, messageText, sendText, ADMIN_ID, userLang);
-                    case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_custom_mod_choice': return userHandler.handleCustomModChoice(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_custom_money_amount': return userHandler.processCustomMoneyOrder(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_custom_gold_amount': return userHandler.processCustomGoldOrder(sender_psid, messageText, sendText, userLang);
                     case 'awaiting_report_ref': return userHandler.handleReportReference(sender_psid, messageText, sendText, userLang);
                     case 'awaiting_report_issue': return userHandler.forwardReportToAdmin(sender_psid, messageText, sendText, ADMIN_ID, userLang);
                 }
