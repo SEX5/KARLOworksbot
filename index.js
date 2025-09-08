@@ -1,4 +1,4 @@
-// index.js (Merged with new features)
+// index.js (Corrected Version)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -68,7 +68,7 @@ async function handleMessage(sender_psid, webhook_event) {
         const adminInfo = await dbManager.getAdminInfo();
 
         if (isAdmin) {
-            // --- ADMIN LOGIC (No changes here for buttons) ---
+            // --- ADMIN LOGIC ---
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
 
