@@ -9,7 +9,6 @@ const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
 const jobPoller = require('./job_poller.js');
-const stockNotifier = require('./stock_notifier.js'); // --- ADD THIS LINE ---
 const { sendText, sendImage, sendQuickReplies } = require('./messenger_api.js'); 
 const lang = require('./language_manager.js');
 const { handleUserError } = require('./error_handler.js');
@@ -273,9 +272,6 @@ async function startServer() {
 
         // Start the background job poller using the new module
         jobPoller.start();
-
-        // Start the background stock notifier
-        stockNotifier.start(); // --- ADD THIS LINE ---
 
     } catch (error) { console.error("Server failed to start:", error); }
 }
