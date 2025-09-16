@@ -15,6 +15,7 @@ async function sendText(psid, text) {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
     } catch (error) {
         console.error("Error sending text message:", error.response?.data || error.message);
+        throw error; // --- FIX: Re-throw the error so the calling function knows it failed.
     }
 }
 
@@ -44,6 +45,7 @@ async function sendQuickReplies(psid, text, replies) {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
     } catch (error) {
         console.error("Error sending quick replies:", error.response?.data || error.message);
+        throw error; // --- FIX: Re-throw the error so the calling function knows it failed.
     }
 }
 
@@ -64,6 +66,7 @@ async function sendImage(psid, imageUrl) {
     }
     catch (error) { 
         console.error("Error sending image message:", error.response?.data || error.message); 
+        throw error; // --- FIX: Re-throw the error so the calling function knows it failed.
     }
 }
 
