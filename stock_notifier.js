@@ -4,8 +4,9 @@ const { sendText } = require('./messenger_api.js');
 const { ADMIN_ID } = require('./secrets.js');
 
 // How often to check the stock (e.g., every 1 hour).
-// 60 minutes * 60 seconds * 1000 milliseconds = 3,600,000
-const STOCK_CHECK_INTERVAL = 60 * 60 * 1000; 
+// 60 minutes * 60 seconds * 1000 milliseconds = 1 hour
+// (60 * 60 * 5) * 1000 = 5 hours
+const NOTIFICATION_INTERVAL = 60 * 60 * 5 * 1000;
 
 // The stock level that triggers a low stock notification.
 const LOW_STOCK_THRESHOLD = 5;
