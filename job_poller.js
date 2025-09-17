@@ -16,32 +16,47 @@ async function pollForJobUpdates() {
         // 1. Handle COMPLETED and FAILED jobs
         const actionableJobs = await dbManager.getActionableJobs();
         for (const job of actionableJobs) {
-            // Since this is a background task, we can't easily get the user's chosen language.
-            // We'll default to English. A more complex solution could store the language
-            // in the jobs table itself during creation.
-            const userLang = 'en'; 
+            const userLang = 'en';
 
             if (job.status === 'completed') {
-                console.log(`[Poller] Processing completed job ${job.job_id} for user ${job.user_psid}`);
-                const deliveryMessage = lang.getText('delivery_success', userLang) + `\n\n${job.result_message}`;
-                await sendText(job.user_psid, deliveryMessage);
-                await dbManager.updateJobStatus(job.job_id, 'delivered');
-            } 
+                // --- START OF FIX ---
+                // Add a specific try/catch block for each delivery attempt.
+                try {
+                    console.log(`[Poller] Processing completed job ${job.job_id} for user ${job.user_psid}`);
+                    const deliveryMessage = lang.getText('delivery_success', userLang) + `\n\n${job.result_message}`;
+                    
+                    // Call sendText WITH the POST_PURCHASE_UPDATE tag to ensure delivery outside the 24hr window.
+                    await sendText(job.user_psid, deliveryMessage, "POST_PURCHASE_UPDATE");
+                    
+                    // This line will now ONLY run if the message was sent successfully.
+                    await dbManager.updateJobStatus(job.job_id, 'delivered');
+
+                } catch (sendError) {
+                    // If sending failed, log it and DO NOT update the status to delivered.
+                    // The job will be picked up and retried in the next polling interval.
+                    console.error(`[Poller] FAILED TO SEND delivery message for job ${job.job_id}. Error: ${sendError.message}. The job status will remain 'completed' for the next retry.`);
+                }
+                // --- END OF FIX ---
+            }
             else if (job.status === 'failed') {
                 console.log(`[Poller] Processing failed job ${job.job_id} for user ${job.user_psid}`);
-                // Notify user
-                await sendText(job.user_psid, lang.getText('delivery_failed_user', userLang));
-                // Notify admin with details
-                const adminMessage = `
-                    ❌ AUTOMATION FAILED for Job ID: ${job.job_id}
-                    User: ${job.user_psid}
-                    Please check the worker logs and assist the user manually.
+                try {
+                    // Notify user
+                    await sendText(job.user_psid, lang.getText('delivery_failed_user', userLang));
+                    // Notify admin with details
+                    const adminMessage = `
+                        ❌ AUTOMATION FAILED for Job ID: ${job.job_id}
+                        User: ${job.user_psid}
+                        Please check the worker logs and assist the user manually.
 
-                    Error Details:
-                    ${job.result_message}
-                `;
-                await sendText(ADMIN_ID, adminMessage);
-                await dbManager.updateJobStatus(job.job_id, 'failed_notified');
+                        Error Details:
+                        ${job.result_message}
+                    `;
+                    await sendText(ADMIN_ID, adminMessage);
+                    await dbManager.updateJobStatus(job.job_id, 'failed_notified');
+                } catch (sendError) {
+                    console.error(`[Poller] FAILED TO SEND failure notification for job ${job.job_id}. Error: ${sendError.message}.`);
+                }
             }
         }
 
@@ -72,4 +87,3 @@ function start() {
 module.exports = {
     start
 };
-
