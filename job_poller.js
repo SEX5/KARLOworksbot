@@ -1,6 +1,6 @@
-// job_poller.js
+// job_poller.js (Simplified & Robust Version)
+console.log("✅✅✅ POLLER STARTUP v5 (Simplified Version) ✅✅✅");
 const dbManager = require('./database.js');
-const lang = require('./language_manager.js');
 const { sendText } = require('./messenger_api.js');
 const { ADMIN_ID } = require('./secrets.js');
 
@@ -13,24 +13,32 @@ let lastOfflineAlertTimestamp = 0;
  */
 async function pollForJobUpdates() {
     try {
-        // 1. Handle COMPLETED and FAILED jobs
         const actionableJobs = await dbManager.getActionableJobs();
         for (const job of actionableJobs) {
-            // Since this is a background task, we can't easily get the user's chosen language.
-            // We'll default to English. A more complex solution could store the language
-            // in the jobs table itself during creation.
-            const userLang = 'en'; 
-
             if (job.status === 'completed') {
-                console.log(`[Poller] Processing completed job ${job.job_id} for user ${job.user_psid}`);
-                const deliveryMessage = lang.getText('delivery_success', userLang) + `\n\n${job.result_message}`;
-                await sendText(job.user_psid, deliveryMessage);
-                await dbManager.updateJobStatus(job.job_id, 'delivered');
+                try {
+                    console.log(`[Poller] Processing completed job ${job.job_id} for user ${job.user_psid}`);
+
+                    // --- SIMPLIFIED MESSAGE ---
+                    // We replaced the language manager with a simple, hardcoded string to prevent hidden crashes.
+                    const deliveryMessage = "Hooray! Your account has been created successfully!\n\n" + job.result_message;
+                    
+                    // Call sendText WITH the required tag to work after 24 hours
+                    await sendText(job.user_psid, deliveryMessage, "POST_PURCHASE_UPDATE");
+                    
+                    // This line will only run if the message was sent successfully
+                    await dbManager.updateJobStatus(job.job_id, 'delivered');
+                    console.log(`[Poller] Successfully delivered job ${job.job_id}.`);
+
+                } catch (sendError) {
+                    // If sending fails, the bot will log the error and try again on the next loop.
+                    console.error(`[Poller] FAILED TO SEND delivery for job ${job.job_id}. Error: ${sendError.message || 'Unknown error'}. It will be retried.`);
+                }
             } 
             else if (job.status === 'failed') {
                 console.log(`[Poller] Processing failed job ${job.job_id} for user ${job.user_psid}`);
-                // Notify user
-                await sendText(job.user_psid, lang.getText('delivery_failed_user', userLang));
+                // Notify user with a simple, hardcoded message
+                await sendText(job.user_psid, "Sorry, there was an error creating your account. The admin has been notified and will assist you shortly.");
                 // Notify admin with details
                 const adminMessage = `
                     ❌ AUTOMATION FAILED for Job ID: ${job.job_id}
@@ -45,7 +53,7 @@ async function pollForJobUpdates() {
             }
         }
 
-        // 2. Check for OFFLINE WORKER
+        // Check for OFFLINE WORKER
         const now = Date.now();
         if (now - lastOfflineAlertTimestamp > OFFLINE_ALERT_COOLDOWN) {
             const staleJobs = await dbManager.getStalePendingJobs(20); // jobs pending > 20 mins
@@ -57,7 +65,7 @@ async function pollForJobUpdates() {
         }
 
     } catch (error) {
-        console.error("[Poller] Error in job polling loop:", error.message);
+        console.error("[Poller] A CRITICAL error occurred in the main polling loop:", error.message);
     }
 }
 
@@ -66,10 +74,9 @@ async function pollForJobUpdates() {
  */
 function start() {
     setInterval(pollForJobUpdates, POLLING_INTERVAL);
-    console.log(`✅ Job poller started. Checking every ${POLLING_INTERVAL / 1000} seconds.`);
+    console.log(`✅ Job poller started with SIMPLIFIED CODE. Checking every ${POLLING_INTERVAL / 1000} seconds.`);
 }
 
 module.exports = {
     start
 };
-
