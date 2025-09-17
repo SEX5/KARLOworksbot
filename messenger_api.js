@@ -8,13 +8,27 @@ const { PAGE_ACCESS_TOKEN } = secrets;
  * Sends a text message to a user.
  * @param {string} psid - The user's Page-Scoped ID.
  * @param {string} text - The message to send.
+ * @param {string} [tag=null] - An optional message tag for notifications (e.g., "POST_PURCHASE_UPDATE").
  */
-async function sendText(psid, text) {
-    const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
+async function sendText(psid, text, tag = null) {
+    const messageData = {
+        recipient: { id: psid },
+        message: { text: text },
+        // Use MESSAGE_TAG if a tag is provided, otherwise use standard RESPONSE
+        messaging_type: tag ? "MESSAGE_TAG" : "RESPONSE"
+    };
+
+    // Add the tag to the payload if it exists
+    if (tag) {
+        messageData.tag = tag;
+    }
+
     try {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
     } catch (error) {
         console.error("Error sending text message:", error.response?.data || error.message);
+        // CRITICAL FIX: Re-throw the error so the calling function (the poller) knows the message failed to send.
+        throw error;
     }
 }
 
@@ -47,7 +61,6 @@ async function sendQuickReplies(psid, text, replies) {
     }
 }
 
-
 /**
  * Sends an image message to a user.
  * @param {string} psid - The user's Page-Scoped ID.
@@ -59,11 +72,11 @@ async function sendImage(psid, imageUrl) {
         message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } },
         messaging_type: "RESPONSE"
     };
-    try { 
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); 
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
     }
-    catch (error) { 
-        console.error("Error sending image message:", error.response?.data || error.message); 
+    catch (error) {
+        console.error("Error sending image message:", error.response?.data || error.message);
     }
 }
 
