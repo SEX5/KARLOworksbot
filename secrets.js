@@ -4,7 +4,7 @@ module.exports = {
     // It must end with port :6543
     DATABASE_URL: "postgresql://postgres.vburnklpeuvxswtrugbp:abalunan1@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres",
     // --- Other secrets ---
-    PAGE_ACCESS_TOKEN: "EAA5a1El5oeIBPcqZBX0DqC87rsMkZCGfshesgIQAgVcujp3G286CMR9uETlp048DFNWXLnKFRkCMkpD0QRwevWxy4c8Og9yJjNqJhyIl5G4XmSTFXYCGGpVhu1XnwZAZCzUxTZCP4JgNRSDYumZCNRxyIYMoBINxWzzZCERwmx3Vzoa8lQ0F3X62T0RLmlo5v7ZCpjsm6T561CDIGZBbNT1DHvZAiKrgZDZD",
+    PAGE_ACCESS_TOKEN: "EAA5a1El5oeIBPcqXg2AY2y0reyZAOnRj2GIveLqop4ibLMoTQZBNo7w2fkLaO6ZCvssgfhOsndEPiyZCv59SguqWt7bARCBtLBrZBB9Mbjkem5ZAtK06u9qTNv8Mj6z1fhZBMN3O7SWBwZACSEJjVTNCYxiat0tp7HChOPvrIhagCwX0j4faZBiZA3zthfrGd0C7iMRTMvQRoe1GAuSJJIWTwRkn9FdwZDZD",
     VERIFY_TOKEN: "pinkGuineaFowl_onpella_2025",
     ADMIN_ID: "9022271741140377",
     GEMINI_API_KEY: "AIzaSyCAIMkQPtvM8aei8QigSyBxD8WoP2hYAQI"
