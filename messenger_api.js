@@ -6,19 +6,17 @@ const { PAGE_ACCESS_TOKEN } = secrets;
 
 /**
  * Sends a text message to a user.
- * @param {string} psid - The user's Page-Scoped ID.
+ * @param {string} psid - This is the user's unique Page-Scoped ID (PSID).
  * @param {string} text - The message to send.
  * @param {string} [tag=null] - An optional message tag for notifications (e.g., "POST_PURCHASE_UPDATE").
  */
 async function sendText(psid, text, tag = null) {
     const messageData = {
-        recipient: { id: psid },
+        recipient: { id: psid }, // The PSID is used here to identify the recipient.
         message: { text: text },
-        // Use MESSAGE_TAG if a tag is provided, otherwise use standard RESPONSE
         messaging_type: tag ? "MESSAGE_TAG" : "RESPONSE"
     };
 
-    // Add the tag to the payload if it exists
     if (tag) {
         messageData.tag = tag;
     }
@@ -27,7 +25,7 @@ async function sendText(psid, text, tag = null) {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
     } catch (error) {
         console.error("Error sending text message:", error.response?.data || error.message);
-        // CRITICAL FIX: Re-throw the error so the calling function (the poller) knows the message failed to send.
+        // CRITICAL FIX: Re-throw the error so the calling function (the poller) knows the message failed.
         throw error;
     }
 }
@@ -36,7 +34,7 @@ async function sendText(psid, text, tag = null) {
  * Sends a text message with quick reply buttons.
  * @param {string} psid - The user's Page-Scoped ID.
  * @param {string} text - The message to send.
- * @param {Array<Object>} replies - An array of quick reply objects, e.g., [{ title: "Yes!", payload: "YES_PAYLOAD" }]
+ * @param {Array<Object>} replies - An array of quick reply objects.
  */
 async function sendQuickReplies(psid, text, replies) {
     const quickReplies = replies.map(reply => ({
@@ -82,7 +80,7 @@ async function sendImage(psid, imageUrl) {
 
 /**
  * Fetches a user's first and last name from the Messenger API.
- * Caches the result to avoid repeated API calls for the same user.
+ * @param {string} psid - The user's Page-Scoped ID.
  */
 const userProfileCache = new Map();
 async function getUserProfile(psid) {
