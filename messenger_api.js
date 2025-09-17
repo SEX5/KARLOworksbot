@@ -6,27 +6,15 @@ const { PAGE_ACCESS_TOKEN } = secrets;
 
 /**
  * Sends a text message to a user.
- * @param {string} psid - This is the user's unique Page-Scoped ID (PSID).
+ * @param {string} psid - The user's Page-Scoped ID.
  * @param {string} text - The message to send.
- * @param {string} [tag=null] - An optional message tag for notifications (e.g., "POST_PURCHASE_UPDATE").
  */
-async function sendText(psid, text, tag = null) {
-    const messageData = {
-        recipient: { id: psid }, // The PSID is used here to identify the recipient.
-        message: { text: text },
-        messaging_type: tag ? "MESSAGE_TAG" : "RESPONSE"
-    };
-
-    if (tag) {
-        messageData.tag = tag;
-    }
-
+async function sendText(psid, text) {
+    const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
     try {
         await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
     } catch (error) {
         console.error("Error sending text message:", error.response?.data || error.message);
-        // CRITICAL FIX: Re-throw the error so the calling function (the poller) knows the message failed.
-        throw error;
     }
 }
 
@@ -34,7 +22,7 @@ async function sendText(psid, text, tag = null) {
  * Sends a text message with quick reply buttons.
  * @param {string} psid - The user's Page-Scoped ID.
  * @param {string} text - The message to send.
- * @param {Array<Object>} replies - An array of quick reply objects.
+ * @param {Array<Object>} replies - An array of quick reply objects, e.g., [{ title: "Yes!", payload: "YES_PAYLOAD" }]
  */
 async function sendQuickReplies(psid, text, replies) {
     const quickReplies = replies.map(reply => ({
@@ -59,6 +47,7 @@ async function sendQuickReplies(psid, text, replies) {
     }
 }
 
+
 /**
  * Sends an image message to a user.
  * @param {string} psid - The user's Page-Scoped ID.
@@ -70,17 +59,17 @@ async function sendImage(psid, imageUrl) {
         message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } },
         messaging_type: "RESPONSE"
     };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    try { 
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData); 
     }
-    catch (error) {
-        console.error("Error sending image message:", error.response?.data || error.message);
+    catch (error) { 
+        console.error("Error sending image message:", error.response?.data || error.message); 
     }
 }
 
 /**
  * Fetches a user's first and last name from the Messenger API.
- * @param {string} psid - The user's Page-Scoped ID.
+ * Caches the result to avoid repeated API calls for the same user.
  */
 const userProfileCache = new Map();
 async function getUserProfile(psid) {
