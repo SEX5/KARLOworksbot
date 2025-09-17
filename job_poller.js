@@ -1,5 +1,7 @@
-// job_poller.js (with enhanced logging)
+// job_poller.js
+console.log("✅✅✅ RUNNING LATEST JOB_POLLER.JS (v2 with logging) ✅✅✅");
 const dbManager = require('./database.js');
+// ... rest of the file
 const lang = require('./language_manager.js');
 const { sendText } = require('./messenger_api.js');
 const { ADMIN_ID } = require('./secrets.js');
