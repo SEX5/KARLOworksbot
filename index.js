@@ -1,5 +1,7 @@
-// index.js (Corrected Version)
+// index.js
+console.log("✅✅✅ RUNNING LATEST INDEX.JS (v2 with logging) ✅✅✅"); 
 const express = require('express');
+// ... rest of the file
 const fs = require('fs');
 const path = require('path');
 const dbManager = require('./database.js');
