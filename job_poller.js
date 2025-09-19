@@ -1,3 +1,4 @@
+// job_poller (12).js
 const dbManager = require('./database.js');
 const lang = require('./language_manager.js');
 const { sendText } = require('./messenger_api.js');
@@ -13,6 +14,7 @@ let lastOfflineAlertTimestamp = 0;
 async function pollForJobUpdates() {
     try {
         // 1. Handle COMPLETED and FAILED jobs
+        // The getActionableJobs function now only gets jobs that need action.
         const actionableJobs = await dbManager.getActionableJobs();
         for (const job of actionableJobs) {
             const userLang = job.lang || 'en'; 
@@ -37,17 +39,10 @@ async function pollForJobUpdates() {
                 await sendText(ADMIN_ID, adminMessage);
                 await dbManager.updateJobStatus(job.job_id, 'failed_notified');
             }
-            else if (job.status === 'delivered') {
-                console.log(`[Poller] Job ${job.job_id} has been delivered. Sending delivery success message to user ${job.user_psid}...`);
-                const deliveryMessage = lang.getText('delivery_success', userLang) + `\n\n${job.result_message}`;
-                console.log(`Delivery message: ${deliveryMessage}`);
-                try {
-                    await sendText(job.user_psid, deliveryMessage);
-                    console.log(`Message sent successfully to user ${job.user_psid}.`);
-                } catch (error) {
-                    console.error(`Error sending message to user ${job.user_psid}:`, error.message);
-                }
-            }
+            // --- FIX ---
+            // Removed the redundant `else if (job.status === 'delivered')` block.
+            // The database query no longer returns these jobs, so this code is unreachable
+            // and was the cause of the repeated messages.
         }
 
         // 2. Check for OFFLINE WORKER
