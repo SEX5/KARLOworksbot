@@ -1,3 +1,4 @@
+// database (17).js
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
@@ -44,7 +45,10 @@ async function setupDatabase() {
 
 async function getActionableJobs() {
     console.log('Getting actionable jobs...');
-    const query = `SELECT * FROM creation_jobs WHERE status = 'completed' OR status = 'failed' OR status = 'delivered'`;
+    // --- FIX ---
+    // Only fetch jobs that have just been completed or failed.
+    // Do not fetch jobs that have already been delivered or notified.
+    const query = `SELECT * FROM creation_jobs WHERE status = 'completed' OR status = 'failed'`;
     const res = await getDb().query(query);
     console.log(`Found ${res.rows.length} actionable jobs.`);
     return res.rows;
