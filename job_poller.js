@@ -1,3 +1,4 @@
+// job_poller.js
 const dbManager = require('./database.js');
 const lang = require('./language_manager.js');
 const { sendText } = require('./messenger_api.js');
@@ -15,6 +16,7 @@ async function pollForJobUpdates() {
         // 1. Handle COMPLETED and FAILED jobs
         const actionableJobs = await dbManager.getActionableJobs();
         for (const job of actionableJobs) {
+            // FIX: Use the language fetched from the database for the user
             const userLang = job.lang || 'en'; 
 
             if (job.status === 'completed') {
@@ -25,7 +27,9 @@ async function pollForJobUpdates() {
             } 
             else if (job.status === 'failed') {
                 console.log(`[Poller] Processing failed job ${job.job_id} for user ${job.user_psid}`);
+                // Notify user in their chosen language
                 await sendText(job.user_psid, lang.getText('delivery_failed_user', userLang));
+                // Notify admin with details
                 const adminMessage = `
                     ❌ AUTOMATION FAILED for Job ID: ${job.job_id}
                     User: ${job.user_psid}
@@ -37,23 +41,12 @@ async function pollForJobUpdates() {
                 await sendText(ADMIN_ID, adminMessage);
                 await dbManager.updateJobStatus(job.job_id, 'failed_notified');
             }
-            else if (job.status === 'delivered') {
-                console.log(`[Poller] Job ${job.job_id} has been delivered. Sending delivery success message to user ${job.user_psid}...`);
-                const deliveryMessage = lang.getText('delivery_success', userLang) + `\n\n${job.result_message}`;
-                console.log(`Delivery message: ${deliveryMessage}`);
-                try {
-                    await sendText(job.user_psid, deliveryMessage);
-                    console.log(`Message sent successfully to user ${job.user_psid}.`);
-                } catch (error) {
-                    console.error(`Error sending message to user ${job.user_psid}:`, error.message);
-                }
-            }
         }
 
         // 2. Check for OFFLINE WORKER
         const now = Date.now();
         if (now - lastOfflineAlertTimestamp > OFFLINE_ALERT_COOLDOWN) {
-            const staleJobs = await dbManager.getStalePendingJobs(20);
+            const staleJobs = await dbManager.getStalePendingJobs(20); // jobs pending > 20 mins
             if (staleJobs.length > 0) {
                 console.warn(`[Poller] Worker appears to be offline. ${staleJobs.length} jobs are stale.`);
                 await sendText(ADMIN_ID, `⚠️ Worker Alert: The automation script may be offline. ${staleJobs.length} job(s) have been pending for over 20 minutes.`);
