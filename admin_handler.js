@@ -17,6 +17,7 @@ const REFERENCES_PER_PAGE = 10;
 async function showAdminMenu(sender_psid, sendText) {
     const adminInfo = await db.getAdminInfo();
     const onlineStatus = adminInfo && adminInfo.is_online ? '✅ Online' : '❌ Offline';
+    const maintenanceStatus = adminInfo && adminInfo.is_maintenance_mode ? '🔴 ON' : '🟢 OFF';
     const menu = `
 Admin Menu:
 
@@ -33,10 +34,45 @@ Type 10: 💬 Reply to a user with account details
 Type 11: 🤖 View account creation jobs
 Type 12: ⚡ Create account for user (Admin)
 Type 13: ➕ Add bulk reference numbers
+Type 14: ⏸️ Pause/Resume bot for a user
+Type 15: 🔧 Toggle Maintenance Mode (Currently: ${maintenanceStatus})
+Type 16: 🗑️ Delete accounts for a mod
+Type 17: 📢 Broadcast a message
+Type 18: ✍️ Edit reference claims
 `;
     await sendText(sender_psid, menu);
     stateManager.clearUserState(sender_psid);
 }
+
+// --- ADDED PAUSE/RESUME FLOW ---
+async function promptForPauseToggle_GetPSID(sender_psid, sendText) {
+    await sendText(sender_psid, "Please enter the Page-Scoped ID (PSID) of the user you want to pause or resume.");
+    stateManager.setUserState(sender_psid, 'awaiting_pause_toggle_psid');
+}
+
+async function processPauseToggle(sender_psid, text, sendText) {
+    const targetPsid = text.trim();
+    if (!/^\d{15,17}$/.test(targetPsid)) {
+        await sendText(sender_psid, "❌ That doesn't look like a valid PSID. Please try again or type 'Menu' to cancel.");
+        return;
+    }
+    try {
+        const isCurrentlyPaused = await db.isUserPaused(targetPsid);
+        if (isCurrentlyPaused) {
+            await db.resumeUser(targetPsid);
+            await sendText(sender_psid, `✅ User ${targetPsid} has been RESUMED. The bot will now respond to them.`);
+        } else {
+            await db.pauseUser(targetPsid);
+            await sendText(sender_psid, `✅ User ${targetPsid} has been PAUSED. The bot will now ignore their messages, allowing you to talk freely.`);
+        }
+    } catch (e) {
+        await sendText(sender_psid, `❌ An error occurred: ${e.message}`);
+    } finally {
+        stateManager.clearUserState(sender_psid);
+    }
+}
+// --- END PAUSE/RESUME FLOW ---
+
 
 // --- NEW: Admin Account Creation Flow ---
 
@@ -111,6 +147,19 @@ async function toggleAdminOnlineStatus(sender_psid, sendText) {
         await sendText(sender_psid, `Your status has been updated to: ${statusText}.\nTo return to the admin menu, type "Menu".`);
     } catch (e) {
         await sendText(sender_psid, `❌ An error occurred while updating your status: ${e.message}`);
+    }
+    stateManager.clearUserState(sender_psid);
+}
+
+async function toggleMaintenanceMode(sender_psid, sendText) {
+    try {
+        const adminInfo = await db.getAdminInfo();
+        const newStatus = !adminInfo.is_maintenance_mode;
+        await db.setMaintenanceMode(newStatus);
+        const statusText = newStatus ? '🔴 ON' : '🟢 OFF';
+        await sendText(sender_psid, `🔧 Maintenance mode is now ${statusText}.\nTo return to the admin menu, type "Menu".`);
+    } catch (e) {
+        await sendText(sender_psid, `❌ An error occurred while updating maintenance mode: ${e.message}`);
     }
     stateManager.clearUserState(sender_psid);
 }
@@ -337,6 +386,180 @@ async function processBulkRefs_Step3_SaveRefs(sender_psid, text, sendText) {
     }
 }
 
+// --- NEW: Delete accounts for a mod ---
+async function promptForDeleteAccounts_Step1_GetModId(sender_psid, sendText) {
+    const mods = await db.getMods();
+    if (!mods || mods.length === 0) {
+        await sendText(sender_psid, "❌ There are no mods in the system. Cannot delete accounts.");
+        stateManager.clearUserState(sender_psid);
+        return;
+    }
+
+    let response = "Which mod's available accounts would you like to delete?\n\n";
+    mods.forEach(mod => {
+        response += `🔹 ID ${mod.id}: ${mod.name} (Stock: ${mod.stock})\n`;
+    });
+    response += `\nPlease reply with just the Mod ID number. This action is irreversible.`;
+    
+    await sendText(sender_psid, response);
+    stateManager.setUserState(sender_psid, 'awaiting_delete_accounts_mod_id');
+}
+
+async function processDeleteAccounts_Step2_ConfirmAndDelete(sender_psid, text, sendText) {
+    const modId = parseInt(text.trim());
+    const mod = await db.getModById(modId);
+
+    if (isNaN(modId) || !mod) {
+        await sendText(sender_psid, "❌ Invalid Mod ID. Please reply with a valid number from the list or type 'Menu' to cancel.");
+        return;
+    }
+
+    try {
+        const deletedCount = await db.deleteAvailableAccountsByModId(modId);
+        await sendText(sender_psid, `✅ Success! Deleted ${deletedCount} available replacement account(s) for Mod ${mod.id} (${mod.name}).`);
+    } catch (e) {
+        console.error("Error deleting bulk accounts:", e);
+        await sendText(sender_psid, `An unexpected error occurred: ${e.message}`);
+    } finally {
+        stateManager.clearUserState(sender_psid);
+    }
+}
+
+// --- NEW: Broadcast Flow ---
+async function promptForBroadcast_Step1_GetMessage(sender_psid, sendText) {
+    await sendText(sender_psid, "📢 Please type the message you want to broadcast to all users.\n\n(Type 'Menu' to cancel.)");
+    stateManager.setUserState(sender_psid, 'awaiting_broadcast_message');
+}
+
+async function processBroadcast_Step2_ConfirmAndSend(sender_psid, text, sendText) {
+    const broadcastMessage = text.trim();
+    if (broadcastMessage.toLowerCase() === 'menu') {
+        stateManager.clearUserState(sender_psid);
+        await sendText(sender_psid, "Broadcast cancelled.");
+        return;
+    }
+    
+    stateManager.setUserState(sender_psid, 'awaiting_broadcast_confirmation', { broadcastMessage });
+    
+    const userIds = await db.getAllUserPSIDs();
+    const userCount = userIds.length;
+
+    await sendText(sender_psid, `
+This message will be sent to approximately ${userCount} users:
+---
+${broadcastMessage}
+---
+⚠️ This action cannot be undone. To proceed, please reply with the word 'CONFIRM'. Any other reply will cancel the broadcast.
+    `);
+}
+
+async function processBroadcast_Step3_Execute(sender_psid, text, sendText) {
+    if (text.trim().toUpperCase() !== 'CONFIRM') {
+        stateManager.clearUserState(sender_psid);
+        await sendText(sender_psid, "❌ Broadcast cancelled. Confirmation not received.");
+        return;
+    }
+
+    const { broadcastMessage } = stateManager.getUserState(sender_psid);
+    stateManager.clearUserState(sender_psid);
+
+    if (!broadcastMessage) {
+        await sendText(sender_psid, "❌ Error: Could not find the message to broadcast. Please start again.");
+        return;
+    }
+
+    await sendText(sender_psid, `🚀 Starting broadcast... This may take a few minutes. You will be notified upon completion.`);
+
+    const userIds = await db.getAllUserPSIDs();
+    let successCount = 0;
+    let errorCount = 0;
+    
+    const { sendText: sendUserText } = require('./messenger_api.js');
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    for (const userId of userIds) {
+        try {
+            await sendUserText(userId, broadcastMessage);
+            successCount++;
+        } catch (e) {
+            console.error(`Failed to send broadcast to user ${userId}:`, e.message);
+            errorCount++;
+        }
+        await delay(100); 
+    }
+
+    const summaryMessage = `
+✅ Broadcast complete!
+---
+- Sent successfully: ${successCount}
+- Failed to send: ${errorCount}
+    `;
+    await sendText(sender_psid, summaryMessage);
+}
+
+// --- NEW: Edit Claims Flow ---
+async function promptForEditClaims_Step1_GetRef(sender_psid, sendText) {
+    await sendText(sender_psid, "✍️ Please enter the 13-digit reference number you want to edit.");
+    stateManager.setUserState(sender_psid, 'awaiting_edit_claims_ref');
+}
+
+async function promptForEditClaims_Step2_GetNewClaims(sender_psid, text, sendText) {
+    const refNumber = text.trim();
+    if (!/^\d{13}$/.test(refNumber)) {
+        await sendText(sender_psid, "❌ Invalid reference number format. Please try again or type 'Menu' to cancel.");
+        return;
+    }
+
+    const ref = await db.getReference(refNumber);
+    if (!ref) {
+        await sendText(sender_psid, "❌ That reference number was not found in the database. Please try again.");
+        return;
+    }
+    
+    const response = `
+Editing Ref: ${ref.ref_number}
+Mod: ${ref.mod_name}
+Current Claims: ${ref.claims_used}/${ref.claims_max}
+
+Please provide the new values in the format: used,max (e.g., 0,5 or 1,3)
+    `;
+    await sendText(sender_psid, response);
+    stateManager.setUserState(sender_psid, 'awaiting_edit_claims_values', { refNumber });
+}
+
+async function processEditClaims_Step3_Update(sender_psid, text, sendText) {
+    const { refNumber } = stateManager.getUserState(sender_psid);
+    const parts = text.split(',');
+
+    if (parts.length !== 2) {
+        await sendText(sender_psid, "❌ Invalid format. Please use the format: used,max (e.g., 1,3). Please try again.");
+        return;
+    }
+
+    const newUsed = parseInt(parts[0].trim());
+    const newMax = parseInt(parts[1].trim());
+
+    if (isNaN(newUsed) || isNaN(newMax) || newUsed < 0 || newMax < 0) {
+        await sendText(sender_psid, "❌ Invalid numbers. Claims must be positive numbers. Please try again.");
+        return;
+    }
+
+    if (newUsed > newMax) {
+        await sendText(sender_psid, "❌ Error: 'Claims used' cannot be greater than 'claims max'. Please try again.");
+        return;
+    }
+
+    try {
+        await db.updateReferenceClaims(refNumber, newUsed, newMax);
+        await sendText(sender_psid, `✅ Claims for reference ${refNumber} have been updated to ${newUsed}/${newMax}.`);
+    } catch(e) {
+        await sendText(sender_psid, `❌ An error occurred during the update: ${e.message}`);
+    } finally {
+        stateManager.clearUserState(sender_psid);
+    }
+}
+
+
 module.exports = {
     showAdminMenu, handleViewReferences, promptForBulkAccounts_Step1_ModId, 
     processBulkAccounts_Step2_GetAccounts, processBulkAccounts_Step3_SaveAccounts,
@@ -346,6 +569,7 @@ module.exports = {
     processAddRef_Step2_GetMod, processAddRef_Step3_Save, promptForEditAdmin, 
     processEditAdmin, promptForEditRef, processEditRef, promptForAddMod, 
     processAddMod, promptForDeleteRef, processDeleteRef, toggleAdminOnlineStatus,
+    toggleMaintenanceMode,
     promptForReply_Step1_GetPSID, promptForReply_Step2_GetUsername,
     promptForReply_Step3_GetPassword, processReply_Step4_Send,
     handleViewJobs,
@@ -354,5 +578,15 @@ module.exports = {
     processAdminCreate_Step3_CreateJob,
     promptForBulkRefs_Step1_GetModId,
     processBulkRefs_Step2_GetRefs,
-    processBulkRefs_Step3_SaveRefs
+    processBulkRefs_Step3_SaveRefs,
+    promptForPauseToggle_GetPSID,
+    processPauseToggle,
+    promptForDeleteAccounts_Step1_GetModId,
+    processDeleteAccounts_Step2_ConfirmAndDelete,
+    promptForBroadcast_Step1_GetMessage,
+    processBroadcast_Step2_ConfirmAndSend,
+    processBroadcast_Step3_Execute,
+    promptForEditClaims_Step1_GetRef,
+    promptForEditClaims_Step2_GetNewClaims,
+    processEditClaims_Step3_Update
 };

@@ -6,9 +6,13 @@
   "menu_option_4": "💰 4️⃣  Custom Gold/Money",
   "menu_option_5": "📩 5️⃣  Kausapin ang admin",
   "menu_option_6": "🧾 6️⃣ Tingnan ang mga patunay",
+  "menu_option_7": "🚨 7️⃣ I-report ang isyu sa account",
   "menu_suffix": "I-type lang ang number na napili mo! 😊",
   "admin_online": "Online ang admin ngayon! 🟢\n\nPuwede mo siyang i-message diretso para sa tulong sa link na ito:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nPwede ka ring pumili sa mga option sa baba:",
   "admin_offline": "Offline muna ang admin ngayon. 🔴\n\nPwede mong gamitin ang automated menu sa baba para sa tulong.",
+  "maintenance_mode_message": "Kasalukuyan po kaming naka-maintenance. Magbabalik kami kaagad! Salamat sa iyong pasensya. 🙏 or message me here m.me/lark.abalunan.1",
+  "confirm_yes": "Oo",
+  "confirm_no": "Hindi",
 
   "manual_entry_start": "😔 Ay, sorry! Hindi ko mabasa 'yung resibo mo.\nPero 'wag mag-alala, puwede nating i-register 'yan manually! 🙌\nPaki-type ang iyong 13-digit GCash reference number. 'Wag lagyan ng space. Example: 123456789123:\n(I-type ang 'Menu' para bumalik.)",
   "manual_entry_invalid_ref": "❌ Mukhang hindi valid 'yung 13-digit reference number na nilagay mo.\nPaki-double check at subukan ulit. Example: 1234567890123\n(I-type ang 'Menu' para bumalik.)",
@@ -27,6 +31,9 @@
   "purchase_invalid_email": "❌ Mukhang hindi valid 'yung email address. Pakisubukan ulit.\n(I-type ang 'Menu' para bumalik.)",
   "purchase_prompt_payment": "🎉 Ayos! Nakuha na namin ang email mo.\n\nPaki-send ang {price} PHP sa GCash na ito:\n 👨🏻‍💻Karl Abalunan\n📞{gcashNumber}\n\n📲 Pagkatapos magbayad, paki-send ang screenshot ng resibo dito para ma-confirm ang purchase.\nIve-verify namin at ibibigay ang mod mo ASAP! ⏳💙\n(I-type ang 'Menu' para bumalik pagkatapos i-send ang resibo.)",
 
+  "receipt_analyzing": "Salamat! Tinitingnan ko ang iyong resibo, sandali lang po...",
+  "processing_receipt_wait": "Tinitingnan ko pa po ang resibo mo. Sandali lang po at babalikan kita agad! 😊",
+  "receipt_cancelled_text_instead": "Mukhang nagpadala ka ng text sa halip na resibo, kaya kinansela ang transaksyon. Pwede kang magsimula muli mula sa menu! 😊",
   "receipt_fail_read": "🔍 Hindi ko masyadong makita 'yung amount o 'yung 13-digit reference number sa resibo.\nPero 'wag mag-alala, na-notify na ang admin para tulungan ka! 🙏\n(I-type ang 'Menu' para bumalik.)",
   "receipt_confirm_purchase": "💳 Nakita ko ang bayad na {amount} PHP.\nBinili mo ba ang Mod {modId}: {modName}?\n✅ Mag-reply ng Yes o No para i-confirm.\n(I-type ang 'Menu' para bumalik.)",
   "receipt_clarify_purchase": "🔍 Nakita ko ang bayad na {amount} PHP, pero tumutugma ito sa maraming mods:\n{modList}\nPaki-type ang number ng mod na binili mo (e.g., *1*).\n(I-type ang 'Menu' para bumalik.)",
@@ -37,6 +44,7 @@
 
   "error_duplicate_ref": "⚠️ Nagamit na ang reference number na ito.\nMaki-contact sa admin kung sa tingin mo ay may pagkakamali.\n(I-type ang 'Menu' para bumalik.)",
   "error_unexpected": "🔧 Nagkaroon ng error. Na-notify na ang admin. Paki-try na lang ulit mamaya.\n(I-type ang 'Menu' para bumalik.)",
+  "error_unexpected_user": "🔧 Ay, pasensya na! Nagkaroon ng technical issue. Na-notify na ang aming admin para ayusin ito. Paki-type ang 'Menu' para subukang muli. Salamat sa iyong pag-unawa!",
   "error_no_mods_found": "⚠️ Nagkaroon ng issue (walang mods na nahanap). Na-notify na ang admin.\n(I-type ang 'Menu' para bumalik.)",
 
   "claims_check_prompt": "🔍 Gusto mo bang i-check kung ilang replacements na lang ang natitira sa'yo?\nPaki-enter ang iyong 13-digit GCash reference number. 'Wag lagyan ng space. Example: 123456789123:\n(I-type ang 'Menu' para bumalik.)",
@@ -47,13 +55,22 @@
   "replace_prompt": "🔁 Ready ka na para sa replacement?\nPaki-provide ang iyong 13-digit GCash reference number. 'Wag lagyan ng space. Example: 123456789123:\n(I-type ang 'Menu' para bumalik.)",
   "replace_no_claims": "❌ Wala nang available na replacement account para sa ref number na 'to.\n(I-type ang 'Menu' para bumalik.)",
   "replace_no_stock": "🛒 Sorry, ubos na ang stock ng replacement accounts para sa mod mo.\nMagre-restock ang admin soon — kausapin mo sila para sa updates.\n(I-type ang 'Menu' para bumalik.)",
+  "replace_limit_reached": "❌ Nakapag-request ka na ng replacement sa nakalipas na 24 oras. Pakisubukang muli mamaya.\n(I-type ang 'Menu' para bumalik.)",
   "replace_success": "🎉 Eto na ang replacement account mo!\n🎮 Mod: {modId}\n📧 Username: `{username}`\n🔐 Password: `{password}`\nEnjoy! At salamat sa tiwala! 💙\n(I-type ang 'Menu' para bumalik.)",
 
   "contact_admin_prompt": "📩 May tanong ka o kailangan mo ng tulong?\nI-type mo lang ang message mo, at ipapasa ko agad sa admin!\n(I-type ang 'Menu' para bumalik.)",
   "contact_admin_success": "✅ Na-send na ang message mo sa admin!\nBabakikan ka namin sa lalong madaling panahon. Salamat sa pag-reach out! 🙌\n(I-type ang 'Menu' para bumalik.)",
+
+  "report_prompt_ref": "🚨 Naiintindihan ko. Para matulungan ka, paki-type ang 13-digit GCash reference number na ginamit mo para sa pagbili ng account na ito.\n(I-type ang 'Menu' para bumalik.)",
+  "report_not_found": "🔍 Paumanhin, hindi ko mahanap ang reference number na iyan. Paki-double check at subukang muli.\n(I-type ang 'Menu' para bumalik.)",
+  "report_prompt_issue": "✅ Salamat. Ngayon, paki-describe ang isyu sa iyong account. Halimbawa: 'May ibang gumagamit ng account ko' o 'Hindi ako makapag-log in'.\n(I-type ang 'Menu' para bumalik.)",
+  "report_success_user": "✅ Natanggap na namin ang iyong report. Na-notify na ang isang admin at aayusin nila ang isyu mo sa lalong madaling panahon. Maraming salamat sa iyong pasensya.\n(I-type ang 'Menu' para bumalik.)",
   
-  "custom_mod_prompt": "💎 Custom Mods 💎\nPumili ka kung ano ang gusto mong i-order:\n\n💰 *Custom Money:*\n- 5 to 10 Million: 150 PHP\n- 10 to 30 Million: 200 PHP\n\n✨ *Custom Gold:*\n- 1k to 6k Gold: 150 PHP\n\nPara umorder, i-type ang pinili mo at ang amount.\n*Mga Example:*\n- \"Money 8 Million\"\n- \"Gold 5k\"\n\n(I-type ang 'Menu' para bumalik.)",
-  "custom_mod_invalid_order": "🤔 Pasensya na, 'di ko naintindihan 'yun o wala sa range 'yung amount. Paki-try ulit gamit ang format na \"Money [amount]\" o \"Gold [amount]\".\n\n*Mga Example:*\n- Money 8 Million\n- Gold 5k\n\n(I-type ang 'Menu' para bumalik.)",
+  "custom_mod_prompt_choice": "💎 Custom Mods 💎\nPumili ka kung ano ang gusto mong i-order:",
+  "custom_mod_prompt_money": "💰 *Custom Money* 💰\n- 5 hanggang 10 Milyon: 150 PHP\n- 10 hanggang 30 Milyon: 200 PHP\nPaki-type kung magkano ang gusto mo (e.g., *8 Million*).",
+  "custom_mod_prompt_gold": "✨ *Custom Gold* ✨\n- 1k hanggang 6k Gold: 150 PHP\nPaki-type kung gaano karaming Gold ang gusto mo (e.g., *5k*).",
+  "custom_mod_invalid_money": "🤔 Pasensya na, wala sa range ang amount na iyan. Paki-type ng amount sa pagitan ng 5 hanggang 30 Milyon.",
+  "custom_mod_invalid_gold": "🤔 Pasensya na, wala sa range ang amount na iyan. Paki-type ng amount sa pagitan ng 1k hanggang 6k.",
   "custom_mod_prompt_payment": "✅ Galing! Nag-request ka ng *{orderAmount} {orderType}*.\n\nPaki-send ang {price} PHP sa GCash na ito:\n 👨🏻‍💻Karl Abalunan\n📞{gcashNumber}\n\n📲 Pagkatapos magbayad, paki-send ang screenshot ng resibo dito.\n(I-type ang 'Menu' para bumalik pagkatapos i-send ang resibo.)",
   "custom_mod_receipt_fail": "🔍 Hindi ko masyadong makita 'yung amount o 'yung 13-digit reference number sa resibo. Na-notify na ang admin para tulungan ka! 🙏",
   "custom_mod_mismatch": "🤔 Hmm, hindi tugma 'yung amount sa resibo ({amount} PHP) sa inaasahang presyo ({price} PHP). Na-notify na ang admin para tulungan ka. Hintayin mo na lang sila.",
