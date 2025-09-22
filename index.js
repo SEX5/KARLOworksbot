@@ -1,4 +1,5 @@
-// index.js (Final Version - Poller Removed)
+// index.js (UPDATED AND COMPATIBLE)
+console.log("✅✅✅ RUNNING LATEST COMPATIBLE INDEX.JS ✅✅✅"); 
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -8,160 +9,61 @@ const userHandler = require('./user_handler.js');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
-const { sendText, sendImage, sendQuickReplies, getUserProfile } = require('./messenger_api.js');
+const jobPoller = require('./job_poller.js');
+const { sendText, sendImage, sendQuickReplies } = require('./messenger_api.js'); 
+const lang = require('./language_manager.js');
+const { handleUserError } = require('./error_handler.js');
 
 const app = express();
 app.use(express.json());
-const { VERIFY_TOKEN, ADMIN_ID, WORKER_SECRET_TOKEN } = secrets;
+const { VERIFY_TOKEN, ADMIN_ID } = secrets;
 
-// --- NEW WEBHOOK ENDPOINT FOR THE WORKER ---
-app.post('/webhook-delivery', async (req, res) => {
-    try {
-        // 1. Security Check
-        const authHeader = req.headers.authorization;
-        const token = authHeader && authHeader.split(' ')[1];
-        if (token !== WORKER_SECRET_TOKEN) {
-            console.warn("Unauthorized delivery attempt received.");
-            return res.status(403).send('Forbidden');
-        }
-
-        // 2. Input Validation
-        const { job_id, username, password } = req.body;
-        if (!job_id || !username || !password) {
-            console.error("Invalid delivery payload received:", req.body);
-            return res.status(400).send('Bad Request: Missing required fields.');
-        }
-
-        // 3. Get Job Details
-        const job = await dbManager.getJobById(job_id);
-        if (!job) {
-            console.error(`Delivery received for a non-existent Job ID: ${job_id}`);
-            return res.status(404).send('Job Not Found');
-        }
-
-        // 4. Construct and Send Message to User
-        const userMessage = `🎉 Hooray! Your account has been created successfully!\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
-        await sendText(job.user_psid, userMessage);
-
-        // 5. Update Job Status to 'delivered'
-        await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
-        
-        console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
-        res.status(200).send('OK');
-
-    } catch (error) {
-        console.error("--- ERROR in /webhook-delivery ---", error);
-        res.status(500).send('Internal Server Error');
-    }
-});
-
-
-async function handleError(error, sender_psid, context = 'Unknown') {
-    console.error(`--- ERROR ---`);
-    console.error(`Context: ${context}`);
-    console.error(`User PSID: ${sender_psid}`);
-    console.error(error);
-    console.error(`--- END ERROR ---`);
-    try {
-        const userName = await getUserProfile(sender_psid);
-        const adminMessage = `🚨 AN ERROR OCCURRED 🚨\nContext: ${context}\nUser: ${userName} (${sender_psid})\nError: ${error.message}`;
-        await sendText(ADMIN_ID, adminMessage);
-        await sendText(sender_psid, "I'm sorry, but something went wrong. I've notified my human supervisor to look into it. Please try again in a little while.");
-    } catch (e) {
-        console.error("Fatal error inside the error handler:", e);
-    }
-}
-
-async function handleReceiptSubmission(sender_psid, imageUrl) {
-    const userState = stateManager.getUserState(sender_psid);
-    const userLang = userState?.lang || 'en';
-    await sendText(sender_psid, "Thank you! Analyzing your receipt, this may take a moment...");
-    try {
-        const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
-        const imageBuffer = Buffer.from(imageResponse.data, 'binary');
-        const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
-        if (!image_b64) throw new Error("Failed to encode image.");
-
-        const analysis = await paymentVerifier.analyzeReceiptWithFallback(imageUrl, image_b64);
-        if (!analysis) throw new Error("AI analysis returned null.");
-
-        const receiptsDir = path.join(__dirname, 'receipts');
-        if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
-        const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
-        fs.writeFileSync(imagePath, imageBuffer);
-
-        if (userState?.state === 'awaiting_receipt_for_custom_mod') {
-            await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
-        } else {
-            await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, sendQuickReplies, ADMIN_ID, userLang);
-        }
-    } catch (error) {
-        if (userState?.state === 'awaiting_receipt_for_purchase') {
-            await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl, userLang);
-        } else {
-            await handleError(error, sender_psid, 'Receipt Submission');
-        }
-    }
-}
+async function handleReceiptSubmission(sender_psid, imageUrl) { const userState = stateManager.getUserState(sender_psid); const userLang = userState?.lang || 'en'; try { const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' }); const imageBuffer = Buffer.from(imageResponse.data, 'binary'); const image_b64 = await paymentVerifier.encodeImage(imageBuffer); if (!image_b64) throw new Error("Failed to encode image."); const analysis = await paymentVerifier.analyzeReceiptWithFallback(imageUrl, image_b64); if (!analysis) throw new Error("AI analysis returned null."); const receiptsDir = path.join(__dirname, 'receipts'); if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); } const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`); fs.writeFileSync(imagePath, imageBuffer); if (userState?.state === 'processing_receipt_custom') { await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang); } else { await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, sendImage, ADMIN_ID, userLang); } } catch (error) { const userState = stateManager.getUserState(sender_psid); const userLang = userState?.lang || 'en'; if (userState?.state === 'processing_receipt') { console.warn(`Receipt analysis failed for user ${sender_psid}, initiating manual flow. Error: ${error.message}`); await userHandler.startManualEntryFlow(sender_psid, sendText, sendImage, imageUrl, userLang); } else { await handleUserError(error, sender_psid, userLang, 'Receipt Submission'); } } }
 
 async function handleMessage(sender_psid, webhook_event) {
     try {
-        const message = webhook_event.message;
-        let received_text = null;
-        if (message?.quick_reply?.payload) { received_text = message.quick_reply.payload; }
-        else if (message?.text) { received_text = message.text; }
-        const lowerCaseText = received_text?.toLowerCase().trim();
-
+        const messageText = webhook_event.message?.quick_reply?.payload || (typeof webhook_event.message?.text === 'string' ? webhook_event.message.text.trim() : null);
+        const lowerCaseText = messageText?.toLowerCase();
+        
         const isAdmin = await dbManager.isAdmin(sender_psid);
-
-        const isMaintenance = await dbManager.getMaintenanceStatus();
-        if (isMaintenance && !isAdmin) {
-            await sendText(sender_psid, "🛠️ The bot is currently undergoing maintenance and will be back shortly. Thank you for your patience!");
-            return;
-        }
-
+        
         if (isAdmin) {
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
-            if (lowerCaseText === 'menu') {
-                stateManager.clearUserState(sender_psid);
-                return adminHandler.showAdminMenu(sender_psid, sendText);
-            }
+            if (lowerCaseText === 'menu') { stateManager.clearUserState(sender_psid); return adminHandler.showAdminMenu(sender_psid, sendText); }
             if (lowerCaseText === 'my id') { return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`); }
             if (state) {
-                 // Switch statement for admin states
                 switch (state) {
-                    case 'awaiting_reply_psid': return adminHandler.promptForReply_Step2_GetUsername(sender_psid, received_text, sendText);
-                    case 'awaiting_reply_username': return adminHandler.promptForReply_Step3_GetPassword(sender_psid, received_text, sendText);
-                    case 'awaiting_reply_password': return adminHandler.processReply_Step4_Send(sender_psid, received_text, sendText);
+                    case 'awaiting_reply_psid': return adminHandler.promptForReply_Step2_GetUsername(sender_psid, messageText, sendText);
+                    case 'awaiting_reply_username': return adminHandler.promptForReply_Step3_GetPassword(sender_psid, messageText, sendText);
+                    case 'awaiting_reply_password': return adminHandler.processReply_Step4_Send(sender_psid, messageText, sendText);
                     case 'viewing_references': const currentPage = userStateObj.page || 1; if (lowerCaseText === '1') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage + 1); if (lowerCaseText === '2') return adminHandler.handleViewReferences(sender_psid, sendText, currentPage - 1); break;
-                    case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, received_text, sendText);
-                    case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_mod_id': return adminHandler.processEditMod_Step2_AskDetail(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_mod_detail_choice': return adminHandler.processEditMod_Step3_AskValue(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_mod_new_value': return adminHandler.processEditMod_Step4_SaveValue(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_mod_continue': return adminHandler.processEditMod_Step5_Continue(sender_psid, received_text, sendText);
-                    case 'awaiting_add_ref_number': return adminHandler.processAddRef_Step2_GetMod(sender_psid, received_text, sendText);
-                    case 'awaiting_add_ref_mod_id': return adminHandler.processAddRef_Step3_Save(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_admin': return adminHandler.processEditAdmin(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, received_text, sendText);
-                    case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, received_text, sendText);
-                    case 'awaiting_delete_ref': return adminHandler.processDeleteRef(sender_psid, received_text, sendText);
-                    case 'awaiting_admin_create_email': return adminHandler.promptForAdminCreate_Step2_GetMod(sender_psid, received_text, sendText);
-                    case 'awaiting_admin_create_mod_id': return adminHandler.processAdminCreate_Step3_CreateJob(sender_psid, received_text, sendText);
-                    case 'awaiting_bulk_refs_mod_id': return adminHandler.processBulkRefs_Step2_GetRefs(sender_psid, received_text, sendText);
-                    case 'awaiting_bulk_refs_list': return adminHandler.processBulkRefs_Step3_SaveRefs(sender_psid, received_text, sendText);
-                    case 'awaiting_pause_toggle_psid': return adminHandler.processPauseToggle(sender_psid, received_text, sendText);
-                    case 'awaiting_delete_mod_accounts_id': return adminHandler.processDeleteModAccounts_Step2_Confirm(sender_psid, received_text, sendText);
-                    case 'awaiting_delete_mod_accounts_confirm': return adminHandler.processDeleteModAccounts_Step3_Execute(sender_psid, received_text, sendText);
-                    case 'awaiting_broadcast_message': return adminHandler.processBroadcast_Step2_Confirm(sender_psid, received_text, sendText);
-                    case 'awaiting_broadcast_confirm': return adminHandler.processBroadcast_Step3_Send(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_claim_ref': return adminHandler.processEditClaims_Step2_GetNewValues(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_claim_values': return adminHandler.processEditClaims_Step3_Update(sender_psid, received_text, sendText);
-                    case 'viewing_statistics': return adminHandler.handleViewStatistics(sender_psid, sendText, lowerCaseText);
+                    case 'awaiting_bulk_accounts_mod_id': return adminHandler.processBulkAccounts_Step2_GetAccounts(sender_psid, messageText, sendText);
+                    case 'awaiting_bulk_accounts_list': return adminHandler.processBulkAccounts_Step3_SaveAccounts(sender_psid, messageText, sendText);
+                    case 'awaiting_edit_mod_id': return adminHandler.processEditMod_Step2_AskDetail(sender_psid, messageText, sendText);
+                    case 'awaiting_edit_mod_detail_choice': return adminHandler.processEditMod_Step3_AskValue(sender_psid, messageText, sendText);
+                    case 'awaiting_edit_mod_new_value': return adminHandler.processEditMod_Step4_SaveValue(sender_psid, messageText, sendText);
+                    case 'awaiting_edit_mod_continue': return adminHandler.processEditMod_Step5_Continue(sender_psid, messageText, sendText);
+                    case 'awaiting_add_ref_number': return adminHandler.processAddRef_Step2_GetMod(sender_psid, messageText, sendText);
+                    case 'awaiting_add_ref_mod_id': return adminHandler.processAddRef_Step3_Save(sender_psid, messageText, sendText);
+                    case 'awaiting_edit_admin': return adminHandler.processEditAdmin(sender_psid, messageText, sendText);
+                    case 'awaiting_edit_ref': return adminHandler.processEditRef(sender_psid, messageText, sendText);
+                    case 'awaiting_add_mod': return adminHandler.processAddMod(sender_psid, messageText, sendText);
+                    case 'awaiting_delete_ref': return adminHandler.processDeleteRef(sender_psid, messageText, sendText);
+                    case 'awaiting_admin_create_email': return adminHandler.promptForAdminCreate_Step2_GetMod(sender_psid, messageText, sendText);
+                    case 'awaiting_admin_create_mod_id': return adminHandler.processAdminCreate_Step3_CreateJob(sender_psid, messageText, sendText);
+                    case 'awaiting_bulk_refs_mod_id': return adminHandler.processBulkRefs_Step2_GetRefs(sender_psid, messageText, sendText);
+                    case 'awaiting_bulk_refs_list': return adminHandler.processBulkRefs_Step3_SaveRefs(sender_psid, messageText, sendText);
+                    case 'awaiting_pause_toggle_psid': return adminHandler.processPauseToggle(sender_psid, messageText, sendText);
+                    case 'awaiting_delete_accounts_mod_id': return adminHandler.processDeleteAccounts_Step2_ConfirmAndDelete(sender_psid, messageText, sendText);
+                    case 'awaiting_broadcast_message': return adminHandler.processBroadcast_Step2_ConfirmAndSend(sender_psid, messageText, sendText);
+                    case 'awaiting_broadcast_confirmation': return adminHandler.processBroadcast_Step3_Execute(sender_psid, messageText, sendText);
+                    case 'awaiting_edit_claims_ref': return adminHandler.promptForEditClaims_Step2_GetNewClaims(sender_psid, messageText, sendText);
+                    case 'awaiting_edit_claims_values': return adminHandler.processEditClaims_Step3_Update(sender_psid, messageText, sendText);
+                    // --- NEW: Added state for sales statistics ---
+                    case 'awaiting_sales_stats_period': return adminHandler.processSalesStats(sender_psid, messageText, sendText);
                 }
             }
-             // Switch statement for admin menu choices
             switch (lowerCaseText) {
                 case '1': return adminHandler.handleViewReferences(sender_psid, sendText, 1);
                 case '2': return adminHandler.promptForBulkAccounts_Step1_ModId(sender_psid, sendText);
@@ -178,75 +80,76 @@ async function handleMessage(sender_psid, webhook_event) {
                 case '13': return adminHandler.promptForBulkRefs_Step1_GetModId(sender_psid, sendText);
                 case '14': return adminHandler.promptForPauseToggle_GetPSID(sender_psid, sendText);
                 case '15': return adminHandler.toggleMaintenanceMode(sender_psid, sendText);
-                case '16': return adminHandler.promptForDeleteModAccounts_Step1_GetModId(sender_psid, sendText);
+                case '16': return adminHandler.promptForDeleteAccounts_Step1_GetModId(sender_psid, sendText);
                 case '17': return adminHandler.promptForBroadcast_Step1_GetMessage(sender_psid, sendText);
                 case '18': return adminHandler.promptForEditClaims_Step1_GetRef(sender_psid, sendText);
-                case '19': return adminHandler.promptForViewStatistics(sender_psid, sendText);
+                // --- NEW: Added command for sales statistics ---
+                case '19': return adminHandler.promptForSalesStats(sender_psid, sendText);
                 default: return adminHandler.showAdminMenu(sender_psid, sendText);
             }
+
         } else {
             // --- USER LOGIC ---
+            // --- CHANGE: Uses new database function for maintenance status ---
+            const isMaintenance = await dbManager.getMaintenanceStatus();
+            if (isMaintenance) {
+                await sendText(sender_psid, lang.getText('maintenance_mode_message', 'en')); // Default to english for this message
+                return;
+            }
+            
             const isPaused = await dbManager.isUserPaused(sender_psid);
-            if (isPaused) return;
+            if (isPaused) { return; }
 
             const userStateObj = stateManager.getUserState(sender_psid);
+            const userLang = userStateObj?.lang || 'en';
+
+            const isExpectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
+            if (isExpectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image' && !webhook_event.message?.sticker_id) {
+                const imageUrl = webhook_event.message.attachments[0].payload.url;
+                const nextState = userStateObj.state === 'awaiting_receipt_for_purchase' ? 'processing_receipt' : 'processing_receipt_custom';
+                stateManager.setUserState(sender_psid, nextState, { ...userStateObj, lang: userLang });
+                await sendText(sender_psid, lang.getText('receipt_analyzing', userLang));
+                await handleReceiptSubmission(sender_psid, imageUrl);
+                return;
+            }
+            const isProcessingReceipt = userStateObj?.state === 'processing_receipt' || userStateObj?.state === 'processing_receipt_custom';
+            if (isProcessingReceipt && messageText) { await sendText(sender_psid, lang.getText('processing_receipt_wait', userLang)); return; }
+            if (isExpectingReceipt && messageText) { await sendText(sender_psid, lang.getText('receipt_cancelled_text_instead', userLang)); stateManager.clearUserState(sender_psid); stateManager.setUserState(sender_psid, 'language_set', { lang: userLang }); return; }
 
             if (!userStateObj || !userStateObj.lang) {
-                let lang = 'en';
-                if (lowerCaseText === 'lang_en' || lowerCaseText === 'english') { lang = 'en'; }
-                else if (lowerCaseText === 'lang_tl' || lowerCaseText === 'tagalog') { lang = 'tl'; }
-                else {
-                    const langPrompt = "Please select your language:";
-                    const replies = [{ title: "English", payload: "lang_en" }, { title: "Tagalog", payload: "lang_tl" }];
-                    await sendQuickReplies(sender_psid, langPrompt, replies);
-                    stateManager.setUserState(sender_psid, 'awaiting_language_choice', {});
-                    return;
-                }
-                await dbManager.addUser(sender_psid, lang);
-                stateManager.setUserState(sender_psid, 'language_set', { lang });
-                await userHandler.showUserMenu(sender_psid, sendQuickReplies, lang);
+                let selectedLang = 'en';
+                if (lowerCaseText === 'english' || lowerCaseText === '1') { selectedLang = 'en'; }
+                else if (lowerCaseText === 'tagalog' || lowerCaseText === '2') { selectedLang = 'tl'; }
+                else { const langPrompt = "Please select your language:"; const replies = [{ title: "English", payload: "1" }, { title: "Tagalog", payload: "2" }]; await sendQuickReplies(sender_psid, langPrompt, replies); stateManager.setUserState(sender_psid, 'awaiting_language_choice', {}); return; }
+                
+                // --- NEW: Add user to the database when they select a language ---
+                await dbManager.addUser(sender_psid, selectedLang);
+                stateManager.setUserState(sender_psid, 'language_set', { lang: selectedLang });
+                await userHandler.showUserMenu(sender_psid, sendText, selectedLang);
                 return;
             }
-
-            const userLang = userStateObj.lang;
-            const expectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
-
-            if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
-                if (!webhook_event.message?.sticker_id) {
-                    const imageUrl = webhook_event.message.attachments[0].payload.url;
-                    await handleReceiptSubmission(sender_psid, imageUrl);
-                }
-                return;
-            }
-            if (expectingReceipt && received_text) {
-                await sendText(sender_psid, "It looks like you sent a message instead of a receipt, so the purchase has been cancelled. Feel free to start again from the menu! 😊");
-                stateManager.clearUserState(sender_psid);
-                stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-                return;
-            }
-            if (!received_text || received_text === '' || webhook_event.message?.sticker_id) {
-                return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
-            }
-            if (lowerCaseText === 'menu') {
-                stateManager.clearUserState(sender_psid);
-                stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-                return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
-            }
+            
+            if (!messageText || messageText === '' || webhook_event.message?.sticker_id) { return userHandler.showUserMenu(sender_psid, sendText, userLang); }
+            if (lowerCaseText === 'menu') { stateManager.clearUserState(sender_psid); stateManager.setUserState(sender_psid, 'language_set', { lang: userLang }); return userHandler.showUserMenu(sender_psid, sendText, userLang); }
             if (lowerCaseText === 'my id') { return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`); }
 
             const state = userStateObj?.state;
             if (state) {
                 switch (state) {
-                    case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, received_text, sendText, sendImage, ADMIN_ID, userLang);
-                    case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, lowerCaseText, sendText, ADMIN_ID, userLang);
-                    case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, received_text, sendText, sendQuickReplies, ADMIN_ID, userLang);
-                    case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, received_text, sendText, ADMIN_ID, userLang);
-                    case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, received_text, sendText, userLang);
+                    case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, messageText, sendText, sendImage, ADMIN_ID, userLang);
+                    case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, messageText, sendText, ADMIN_ID, userLang);
+                    case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, messageText, sendText, ADMIN_ID, userLang);
+                    case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, messageText, sendText, ADMIN_ID, userLang);
+                    case 'awaiting_custom_mod_choice': return userHandler.handleCustomModChoice(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_custom_money_amount': return userHandler.processCustomMoneyOrder(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_custom_gold_amount': return userHandler.processCustomGoldOrder(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_report_ref': return userHandler.handleReportReference(sender_psid, messageText, sendText, userLang);
+                    case 'awaiting_report_issue': return userHandler.forwardReportToAdmin(sender_psid, messageText, sendText, ADMIN_ID, userLang);
                 }
             }
             switch (lowerCaseText) {
@@ -256,43 +159,24 @@ async function handleMessage(sender_psid, webhook_event) {
                 case '4': return userHandler.promptForCustomMod(sender_psid, sendText, userLang);
                 case '5': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
                 case '6': return userHandler.handleViewProofs(sender_psid, sendText, userLang);
-                default: return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
+                case '7': return userHandler.promptForReport(sender_psid, sendText, userLang);
+                default: return userHandler.showUserMenu(sender_psid, sendText, userLang);
             }
         }
-    } catch (error) {
-        await handleError(error, sender_psid, 'Master Message Handler');
-    }
+    } catch (error) { const userState = stateManager.getUserState(sender_psid); const userLang = userState?.lang || 'en'; await handleUserError(error, sender_psid, userLang, 'Main Message Handler'); }
 }
 
 async function startServer() {
     try {
         await dbManager.setupDatabase();
         app.get('/', (req, res) => { res.status(200).send('Bot is online and healthy.'); });
-        app.get('/webhook', (req, res) => {
-            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
-            if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-                console.log("Webhook verified successfully!");
-                res.status(200).send(challenge);
-            } else { res.sendStatus(403); }
-        });
-        app.post('/webhook', (req, res) => {
-            if (req.body.object === 'page') {
-                req.body.entry.forEach(entry => {
-                    const event = entry.messaging[0];
-                    if (event?.sender?.id && (event.message || event.postback)) {
-                        handleMessage(event.sender.id, event);
-                    }
-                });
-                res.status(200).send('EVENT_RECEIVED');
-            } else { res.sendStatus(404); }
-        });
+        app.get('/webhook', (req, res) => { const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query; if (mode === 'subscribe' && token === VERIFY_TOKEN) { console.log("Webhook verified successfully!"); res.status(200).send(challenge); } else { res.sendStatus(403); } });
+        app.post('/webhook', (req, res) => { if (req.body.object === 'page') { req.body.entry.forEach(entry => { const event = entry.messaging[0]; if (event?.sender?.id && event.message) { handleMessage(event.sender.id, event); } }); res.status(200).send('EVENT_RECEIVED'); } else { res.sendStatus(404); } });
         const PORT = process.env.PORT || 3000;
         const HOST = '0.0.0.0';
         app.listen(PORT, HOST, () => { console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); });
-    } catch (error) {
-        console.error("Server failed to start:", error);
-        process.exit(1);
-    }
+        jobPoller.start();
+    } catch (error) { console.error("Server failed to start:", error); }
 }
 
 startServer();
