@@ -140,7 +140,7 @@ async function toggleMaintenanceMode(sender_psid, sendText) {
     try {
         const currentStatus = await db.getMaintenanceStatus();
         const newStatus = !currentStatus;
-        await db.setMaintenanceStatus(newStatus);
+        await db.setMaintenanceStatus(newStatus); // CORRECTED
         const statusText = newStatus ? '🔴 ON' : '🟢 OFF';
         await sendText(sender_psid, `🔧 Maintenance mode is now ${statusText}.\nTo return to the admin menu, type "Menu".`);
     } catch (e) {
