@@ -1,4 +1,4 @@
-// database (17).js
+// database.js (Corrected and Final Version)
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
@@ -33,6 +33,7 @@ async function setupDatabase() {
         await client.query(`CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, mod_id INTEGER NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, is_available BOOLEAN DEFAULT TRUE, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
         await client.query(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, last_replacement_timestamp TIMESTAMPTZ, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
         await client.query(`CREATE TABLE IF NOT EXISTS creation_jobs ( job_id SERIAL PRIMARY KEY, user_psid TEXT NOT NULL, email TEXT NOT NULL, password TEXT NOT NULL, mod_id INTEGER NOT NULL, status VARCHAR(20) DEFAULT 'pending', result_message TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP )`);
+        // This line was missing from your "new" file but is required.
         await client.query(`CREATE TABLE IF NOT EXISTS paused_users (user_id TEXT PRIMARY KEY)`);
         await client.query('COMMIT');
         console.log('Database tables are ready on Supabase.');
@@ -45,9 +46,6 @@ async function setupDatabase() {
 
 async function getActionableJobs() {
     console.log('Getting actionable jobs...');
-    // --- FIX ---
-    // Only fetch jobs that have just been completed or failed.
-    // Do not fetch jobs that have already been delivered or notified.
     const query = `SELECT * FROM creation_jobs WHERE status = 'completed' OR status = 'failed'`;
     const res = await getDb().query(query);
     console.log(`Found ${res.rows.length} actionable jobs.`);
