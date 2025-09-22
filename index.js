@@ -152,37 +152,37 @@ async function handleMessage(sender_psid, webhook_event) {
                     case 'awaiting_bulk_refs_mod_id': return adminHandler.processBulkRefs_Step2_GetRefs(sender_psid, received_text, sendText);
                     case 'awaiting_bulk_refs_list': return adminHandler.processBulkRefs_Step3_SaveRefs(sender_psid, received_text, sendText);
                     case 'awaiting_pause_toggle_psid': return adminHandler.processPauseToggle(sender_psid, received_text, sendText);
-                    case 'awaiting_delete_mod_accounts_id': return adminHandler.processDeleteModAccounts_Step2_Confirm(sender_psid, received_text, sendText);
-                    case 'awaiting_delete_mod_accounts_confirm': return adminHandler.processDeleteModAccounts_Step3_Execute(sender_psid, received_text, sendText);
-                    case 'awaiting_broadcast_message': return adminHandler.processBroadcast_Step2_Confirm(sender_psid, received_text, sendText);
-                    case 'awaiting_broadcast_confirm': return adminHandler.processBroadcast_Step3_Send(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_claim_ref': return adminHandler.processEditClaims_Step2_GetNewValues(sender_psid, received_text, sendText);
-                    case 'awaiting_edit_claim_values': return adminHandler.processEditClaims_Step3_Update(sender_psid, received_text, sendText);
-                    case 'viewing_statistics': return adminHandler.handleViewStatistics(sender_psid, sendText, lowerCaseText);
+                    case 'awaiting_delete_accounts_mod_id': return adminHandler.processDeleteAccounts_Step2_ConfirmAndDelete(sender_psid, received_text, sendText); // CORRECTED
+                    case 'awaiting_broadcast_message': return adminHandler.processBroadcast_Step2_ConfirmAndSend(sender_psid, received_text, sendText); // CORRECTED
+                    case 'awaiting_broadcast_confirmation': return adminHandler.processBroadcast_Step3_Execute(sender_psid, received_text, sendText); // CORRECTED
+                    case 'awaiting_edit_claims_ref': return adminHandler.promptForEditClaims_Step2_GetNewClaims(sender_psid, received_text, sendText); // CORRECTED
+                    case 'awaiting_edit_claims_values': return adminHandler.processEditClaims_Step3_Update(sender_psid, received_text, sendText); // CORRECTED
+                    case 'awaiting_sales_stats_period': return adminHandler.processSalesStats(sender_psid, received_text, sendText); // CORRECTED
                 }
-            }
-             // Switch statement for admin menu choices
-            switch (lowerCaseText) {
-                case '1': return adminHandler.handleViewReferences(sender_psid, sendText, 1);
-                case '2': return adminHandler.promptForBulkAccounts_Step1_ModId(sender_psid, sendText);
-                case '3': return adminHandler.promptForEditMod_Step1_ModId(sender_psid, sendText);
-                case '4': return adminHandler.promptForAddRef_Step1_GetRef(sender_psid, sendText);
-                case '5': return adminHandler.promptForEditAdmin(sender_psid, sendText);
-                case '6': return adminHandler.promptForEditRef(sender_psid, sendText);
-                case '7': return adminHandler.promptForAddMod(sender_psid, sendText);
-                case '8': return adminHandler.promptForDeleteRef(sender_psid, sendText);
-                case '9': return adminHandler.toggleAdminOnlineStatus(sender_psid, sendText);
-                case '10': return adminHandler.promptForReply_Step1_GetPSID(sender_psid, sendText);
-                case '11': return adminHandler.handleViewJobs(sender_psid, sendText);
-                case '12': return adminHandler.promptForAdminCreate_Step1_GetEmail(sender_psid, sendText);
-                case '13': return adminHandler.promptForBulkRefs_Step1_GetModId(sender_psid, sendText);
-                case '14': return adminHandler.promptForPauseToggle_GetPSID(sender_psid, sendText);
-                case '15': return adminHandler.toggleMaintenanceMode(sender_psid, sendText);
-                case '16': return adminHandler.promptForDeleteModAccounts_Step1_GetModId(sender_psid, sendText);
-                case '17': return adminHandler.promptForBroadcast_Step1_GetMessage(sender_psid, sendText);
-                case '18': return adminHandler.promptForEditClaims_Step1_GetRef(sender_psid, sendText);
-                case '19': return adminHandler.promptForViewStatistics(sender_psid, sendText);
-                default: return adminHandler.showAdminMenu(sender_psid, sendText);
+            } else { // If no state, check for menu command
+                 // Switch statement for admin menu choices
+                switch (lowerCaseText) {
+                    case '1': return adminHandler.handleViewReferences(sender_psid, sendText, 1);
+                    case '2': return adminHandler.promptForBulkAccounts_Step1_ModId(sender_psid, sendText);
+                    case '3': return adminHandler.promptForEditMod_Step1_ModId(sender_psid, sendText);
+                    case '4': return adminHandler.promptForAddRef_Step1_GetRef(sender_psid, sendText);
+                    case '5': return adminHandler.promptForEditAdmin(sender_psid, sendText);
+                    case '6': return adminHandler.promptForEditRef(sender_psid, sendText);
+                    case '7': return adminHandler.promptForAddMod(sender_psid, sendText);
+                    case '8': return adminHandler.promptForDeleteRef(sender_psid, sendText);
+                    case '9': return adminHandler.toggleAdminOnlineStatus(sender_psid, sendText);
+                    case '10': return adminHandler.promptForReply_Step1_GetPSID(sender_psid, sendText);
+                    case '11': return adminHandler.handleViewJobs(sender_psid, sendText);
+                    case '12': return adminHandler.promptForAdminCreate_Step1_GetEmail(sender_psid, sendText);
+                    case '13': return adminHandler.promptForBulkRefs_Step1_GetModId(sender_psid, sendText);
+                    case '14': return adminHandler.promptForPauseToggle_GetPSID(sender_psid, sendText);
+                    case '15': return adminHandler.toggleMaintenanceMode(sender_psid, sendText);
+                    case '16': return adminHandler.promptForDeleteAccounts_Step1_GetModId(sender_psid, sendText); // CORRECTED
+                    case '17': return adminHandler.promptForBroadcast_Step1_GetMessage(sender_psid, sendText);
+                    case '18': return adminHandler.promptForEditClaims_Step1_GetRef(sender_psid, sendText); // CORRECTED
+                    case '19': return adminHandler.promptForSalesStats(sender_psid, sendText); // CORRECTED
+                    default: return adminHandler.showAdminMenu(sender_psid, sendText);
+                }
             }
         } else {
             // --- USER LOGIC ---
