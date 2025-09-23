@@ -118,7 +118,7 @@ async function processReplacementRequest(sender_psid, refNumber, sendText, userL
             const lastReplacementTime = new Date(ref.last_replacement_timestamp).getTime();
             const twentyFourHours = 24 * 60 * 60 * 1000;
             if (Date.now() - lastReplacementTime < twentyFourHours) {
-                resultMsg = lang.getText('replace_daily_limit', userLang);
+                resultMsg = lang.getText('replace_limit_reached', userLang);
             }
         }
         if (!resultMsg) {
