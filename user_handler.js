@@ -1,4 +1,4 @@
-// user_handler.js (Final Hybrid Version - Complete)
+// user_handler.js (Fully Corrected, Feature-Complete Version)
 const db = require('./database');
 const stateManager = require('./state_manager');
 const messengerApi = require('./messenger_api.js');
@@ -19,8 +19,10 @@ async function showUserMenu(sender_psid, sendQuickReplies, userLang = 'en') {
     let initialMessage = adminInfo?.is_online ? lang.getText('admin_online', userLang) : lang.getText('admin_offline', userLang);
     await messengerApi.sendText(sender_psid, initialMessage);
 
-    const menuText = `${lang.getText('welcome_message', userLang)}\n\n${lang.getText('menu_option_1', userLang)}\n${lang.getText('menu_option_2', userLang)}\n${lang.getText('menu_option_3', userLang)}\n${lang.getText('menu_option_4', userLang)}\n${lang.getText('menu_option_5', userLang)}\n${lang.getText('menu_option_6', userLang)}\n\n${lang.getText('menu_suffix', userLang)}`;
+    // FIX: Added Menu Option 7 to the menu text
+    const menuText = `${lang.getText('welcome_message', userLang)}\n\n${lang.getText('menu_option_1', userLang)}\n${lang.getText('menu_option_2', userLang)}\n${lang.getText('menu_option_3', userLang)}\n${lang.getText('menu_option_4', userLang)}\n${lang.getText('menu_option_5', userLang)}\n${lang.getText('menu_option_6', userLang)}\n${lang.getText('menu_option_7', userLang)}\n\n${lang.getText('menu_suffix', userLang)}`;
     
+    // FIX: Added Menu Option 7 to the quick replies
     const replies = [
         { title: lang.getText('menu_option_1_button', userLang), payload: "1" },
         { title: lang.getText('menu_option_2_button', userLang), payload: "2" },
@@ -28,6 +30,7 @@ async function showUserMenu(sender_psid, sendQuickReplies, userLang = 'en') {
         { title: lang.getText('menu_option_4_button', userLang), payload: "4" },
         { title: lang.getText('menu_option_5_button', userLang), payload: "5" },
         { title: lang.getText('menu_option_6_button', userLang), payload: "6" },
+        { title: lang.getText('menu_option_7_button', userLang), payload: "7" },
     ];
     await sendQuickReplies(sender_psid, menuText, replies);
 }
@@ -55,7 +58,9 @@ async function handleViewMods(sender_psid, sendText, userLang = 'en') {
 async function handleWantMod(sender_psid, text, sendText, userLang = 'en') {
     const modId = parseInt(text.trim());
     if (isNaN(modId)) {
-        return; // Ignore non-numeric input in this state
+        // FIX: Sends an error message for invalid text input instead of silently failing.
+        await sendText(sender_psid, lang.getText('purchase_invalid_format', userLang));
+        return;
     }
     const mod = await db.getModById(modId);
     if (!mod) {
@@ -118,6 +123,7 @@ async function processReplacementRequest(sender_psid, refNumber, sendText, userL
             const lastReplacementTime = new Date(ref.last_replacement_timestamp).getTime();
             const twentyFourHours = 24 * 60 * 60 * 1000;
             if (Date.now() - lastReplacementTime < twentyFourHours) {
+                // FIX: Uses the correct language key.
                 resultMsg = lang.getText('replace_limit_reached', userLang);
             }
         }
@@ -145,7 +151,8 @@ async function processReplacementRequest(sender_psid, refNumber, sendText, userL
 
 // --- Custom Mod Flow (Text-based) ---
 async function promptForCustomMod(sender_psid, sendText, userLang = 'en') {
-    await sendText(sender_psid, lang.getText('custom_mod_prompt', userLang));
+    // FIX: Uses the correct language key.
+    await sendText(sender_psid, lang.getText('custom_mod_prompt_choice', userLang));
     stateManager.setUserState(sender_psid, 'awaiting_custom_mod_order', { lang: userLang });
 }
 
@@ -252,18 +259,22 @@ async function handleModConfirmation(sender_psid, text, sendText, ADMIN_ID, user
     const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
     if (text.toLowerCase() === 'confirm_yes') {
         try {
-            await db.addReference(refNumber, sender_psid, modId);
             const userName = await messengerApi.getUserProfile(sender_psid);
+            await db.addReference(refNumber, sender_psid, modId);
 
             const password = generatePassword();
             const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
             
-            await sendText(sender_psid, "✅ Thank you! Your order is confirmed.\n\n🤖 Our system has started creating your account. We will send you another message with the login details the moment it's ready!\n\nThank you for your patience! 💙");
+            // FIX: Uses the translatable language key instead of a hardcoded message.
+            const confirmationMessage = lang.getText('automation_started_user', userLang)
+                .replace('{modName}', modName);
+            await sendText(sender_psid, confirmationMessage);
             
             await sendText(ADMIN_ID, `🤖 Automation job (ID: ${jobId}) has been queued for ${userName} (Mod: ${modName}, Ref: ${refNumber})`);
 
         } catch (e) {
             if (e.message === 'Duplicate reference number') {
+                const userName = await messengerApi.getUserProfile(sender_psid);
                 await sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
                 await sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a DUPLICATE reference: ${refNumber}`);
             } else { throw e; }
@@ -284,13 +295,16 @@ async function handleModClarification(sender_psid, text, sendText, sendQuickRepl
             await sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
             return;
         }
-        await db.addReference(refNumber, sender_psid, modId);
         const userName = await messengerApi.getUserProfile(sender_psid);
+        await db.addReference(refNumber, sender_psid, modId);
         
         const password = generatePassword();
         const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
         
-        await sendText(sender_psid, "✅ Thank you! Your order is confirmed.\n\n🤖 Our system has started creating your account. We will send you another message with the login details the moment it's ready!\n\nThank you for your patience! 💙");
+        // FIX: Uses the translatable language key instead of a hardcoded message.
+        const confirmationMessage = lang.getText('automation_started_user', userLang)
+            .replace('{modName}', mod.name);
+        await sendText(sender_psid, confirmationMessage);
         
         await sendText(ADMIN_ID, `🤖 Automation job (ID: ${jobId}) has been queued for ${userName} (Mod: ${mod.name}, Ref: ${refNumber})`);
 
@@ -372,6 +386,42 @@ async function forwardMessageToAdmin(sender_psid, text, sendText, ADMIN_ID, user
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
+// --- NEW FUNCTIONS for Report Issue Feature ---
+
+async function promptForReportRef(sender_psid, sendText, userLang = 'en') {
+    await sendText(sender_psid, lang.getText('report_prompt_ref', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_report_ref', { lang: userLang });
+}
+
+async function processReportRef(sender_psid, text, sendText, userLang = 'en') {
+    const refNumber = text.trim();
+    if (!/^\d{13}$/.test(refNumber)) {
+        await sendText(sender_psid, lang.getText('claims_check_invalid_format', userLang)); // Re-using this key is efficient
+        return;
+    }
+    const ref = await db.getReference(refNumber);
+    if (!ref) {
+        await sendText(sender_psid, lang.getText('report_not_found', userLang));
+        return;
+    }
+    await sendText(sender_psid, lang.getText('report_prompt_issue', userLang));
+    stateManager.setUserState(sender_psid, 'awaiting_report_issue_desc', { refNumber, lang: userLang });
+}
+
+async function processReportDescription(sender_psid, text, sendText, ADMIN_ID, userLang = 'en') {
+    const { refNumber } = stateManager.getUserState(sender_psid);
+    const issueDescription = text.trim();
+    const userName = await messengerApi.getUserProfile(sender_psid);
+    
+    const adminNotification = `🚨 NEW ACCOUNT ISSUE REPORT 🚨\n\nUser: ${userName} (${sender_psid})\nReference: ${refNumber}\n\nIssue:\n"${issueDescription}"`;
+    await sendText(ADMIN_ID, adminNotification);
+    
+    await sendText(sender_psid, lang.getText('report_success_user', userLang));
+    stateManager.clearUserState(sender_psid);
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+}
+
+
 module.exports = {
     showUserMenu,
     handleViewMods,
@@ -392,5 +442,9 @@ module.exports = {
     promptForCustomMod,
     handleCustomModOrder,
     handleCustomModReceipt,
-    handleViewProofs
+    handleViewProofs,
+    // NEW EXPORTS for the report feature
+    promptForReportRef,
+    processReportRef,
+    processReportDescription
 };
