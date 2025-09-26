@@ -1,11 +1,13 @@
-// index.js (Fully Corrected and Feature-Complete Version)
+// index.js (Fully Corrected, Compatible with Original admin_handler.js and user_handler.js)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const dbManager = require('./database.js');
 const stateManager = require('./state_manager.js');
-const userHandler = require('./user_handler'); // <-- UPDATED: Points to the new user_handler/index.js
+// --- NOTE: These lines point to your original, single-file handlers ---
+const userHandler = require('./user_handler'); 
 const adminHandler = require('./admin_handler.js');
+// ---
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
 const { sendText, sendImage, sendQuickReplies, getUserProfile } = require('./messenger_api.js');
@@ -15,7 +17,7 @@ const app = express();
 app.use(express.json());
 const { VERIFY_TOKEN, ADMIN_ID, WORKER_SECRET_TOKEN } = secrets;
 
-// --- NEW WEBHOOK ENDPOINT FOR THE WORKER ---
+// --- CRITICAL FIX: Resilient Webhook Endpoint for the Worker ---
 app.post('/webhook-delivery', async (req, res) => {
     try {
         // 1. Security Check
@@ -40,23 +42,44 @@ app.post('/webhook-delivery', async (req, res) => {
             return res.status(404).send('Job Not Found');
         }
         
-        // FIX: Get user's language to send a translated message
         const user = await dbManager.getUser(job.user_psid);
         const userLang = user?.lang || 'en';
 
-        // FIX: Use translatable language key for the delivery message
         const deliveryHeader = lang.getText('delivery_success', userLang);
         const userMessage = `${deliveryHeader}\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
-        await sendText(job.user_psid, userMessage);
-
-        // 5. Update Job Status to 'delivered'
-        await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
         
-        console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
+        // 4. Attempt to send the message BUT handle failures gracefully
+        try {
+            await sendText(job.user_psid, userMessage);
+            // If message is sent successfully, update job as delivered
+            await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
+            console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
+
+        } catch (deliveryError) {
+            // If sending fails (e.g., user blocked the bot or another API error)
+            console.error(`--- MESSAGE DELIVERY FAILED for Job ID ${job_id} ---`);
+            console.error(deliveryError.message);
+            
+            // Still update the job, but with a different status to indicate a delivery problem
+            const failureMessage = `Account created, but failed to send message to user ${job.user_psid}. They may have blocked the bot.`;
+            await dbManager.updateJobStatus(job_id, 'failed_notified', failureMessage);
+            
+            // Notify the admin with the credentials so they can be delivered manually
+            const adminAlert = `⚠️ Account for Job ID ${job_id} was created, but I couldn't send the details to the user. Please deliver these credentials manually:\n\nUser: \`${username}\`\nPass: \`${password}\``;
+            await sendText(ADMIN_ID, adminAlert);
+        }
+
+        // ALWAYS send a success response to the worker, because the account *was* created.
+        // This stops the worker from thinking a fatal error occurred.
         res.status(200).send('OK');
 
     } catch (error) {
-        console.error("--- ERROR in /webhook-delivery ---", error);
+        // This outer catch now only handles critical errors (like the database being down)
+        console.error("--- CRITICAL ERROR in /webhook-delivery ---", error);
+        const job_id = req.body?.job_id || 'Unknown';
+        if (job_id !== 'Unknown') {
+            await dbManager.updateJobStatus(job_id, 'failed', `A critical server error occurred in the webhook receiver: ${error.message}`);
+        }
         res.status(500).send('Internal Server Error');
     }
 });
@@ -106,7 +129,6 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
             await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, sendQuickReplies, ADMIN_ID, userLang);
         }
     } catch (error) {
-        // Fallback to manual entry ONLY for standard purchase flow
         if (userState?.state === 'awaiting_receipt_for_purchase') {
             await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl, userLang);
         } else {
@@ -134,7 +156,6 @@ async function handleMessage(sender_psid, webhook_event) {
         }
 
         if (isAdmin) {
-            // Admin logic remains unchanged...
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
             if (lowerCaseText === 'menu') {
@@ -249,38 +270,28 @@ async function handleMessage(sender_psid, webhook_event) {
             const state = userStateObj?.state;
             if (state) {
                 switch (state) {
-                    // Purchase Flow
-                    case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, received_text, userLang);
-                    case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, received_text, userLang);
-                    case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, lowerCaseText, ADMIN_ID, userLang);
-                    case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, received_text, ADMIN_ID, userLang);
-                    
-                    // Manual Entry Flow
-                    case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, received_text, userLang);
-                    case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, received_text, sendImage, ADMIN_ID, userLang);
-                    
-                    // Account Services
-                    case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, received_text, userLang);
-                    case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, received_text, userLang);
-
-                    // Custom Mod Flow
-                    case 'awaiting_custom_mod_type': return userHandler.handleCustomModType(sender_psid, received_text, userLang);
-                    case 'awaiting_custom_mod_amount': return userHandler.handleCustomModAmount(sender_psid, received_text, userLang);
-
-                    // Support Flow
-                    case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, received_text, ADMIN_ID, userLang);
-                    case 'awaiting_report_ref': return userHandler.processReportRef(sender_psid, received_text, userLang);
-                    case 'awaiting_report_issue_desc': return userHandler.processReportDescription(sender_psid, received_text, ADMIN_ID, userLang);
+                    case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, received_text, sendText, userLang);
+                    case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, received_text, sendText, userLang);
+                    case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, lowerCaseText, sendText, ADMIN_ID, userLang);
+                    case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, received_text, sendText, sendQuickReplies, ADMIN_ID, userLang);
+                    case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, received_text, sendText, userLang);
+                    case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, received_text, sendText, sendImage, ADMIN_ID, userLang);
+                    case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, received_text, sendText, userLang);
+                    case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, received_text, sendText, userLang);
+                    case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, received_text, sendText, userLang);
+                    case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, received_text, sendText, ADMIN_ID, userLang);
+                    case 'awaiting_report_ref': return userHandler.processReportRef(sender_psid, received_text, sendText, userLang);
+                    case 'awaiting_report_issue_desc': return userHandler.processReportDescription(sender_psid, received_text, sendText, ADMIN_ID, userLang);
                 }
             }
             switch (lowerCaseText) {
-                case '1': return userHandler.handleViewMods(sender_psid, userLang);
-                case '2': return userHandler.promptForCheckClaims(sender_psid, userLang);
-                case '3': return userHandler.promptForReplacement(sender_psid, userLang);
-                case '4': return userHandler.promptForCustomMod(sender_psid, userLang);
-                case '5': return userHandler.promptForAdminMessage(sender_psid, userLang);
-                case '6': return userHandler.handleViewProofs(sender_psid, userLang);
-                case '7': return userHandler.promptForReportRef(sender_psid, userLang);
+                case '1': return userHandler.handleViewMods(sender_psid, sendText, userLang);
+                case '2': return userHandler.promptForCheckClaims(sender_psid, sendText, userLang);
+                case '3': return userHandler.promptForReplacement(sender_psid, sendText, userLang);
+                case '4': return userHandler.promptForCustomMod(sender_psid, sendText, userLang);
+                case '5': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
+                case '6': return userHandler.handleViewProofs(sender_psid, sendText, userLang);
+                case '7': return userHandler.promptForReportRef(sender_psid, sendText, userLang);
                 default: return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
             }
         }
@@ -294,7 +305,7 @@ async function startServer() {
         await dbManager.setupDatabase();
         app.get('/', (req, res) => { res.status(200).send('Bot is online and healthy.'); });
         app.get('/webhook', (req, res) => {
-            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.body;
+            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
             if (mode === 'subscribe' && token === VERIFY_TOKEN) {
                 console.log("Webhook verified successfully!");
                 res.status(200).send(challenge);
