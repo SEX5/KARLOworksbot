@@ -310,4 +310,13 @@ async function startServer() {
                 res.status(200).send('EVENT_RECEIVED');
             } else { res.sendStatus(404); }
         });
-        const PORT = pro
+        const PORT = process.env.PORT || 3000;
+        const HOST = '0.0.0.0';
+        app.listen(PORT, HOST, () => { console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); });
+    } catch (error) {
+        console.error("Server failed to start:", error);
+        process.exit(1);
+    }
+}
+
+startServer();
