@@ -17,7 +17,7 @@ const app = express();
 app.use(express.json());
 const { VERIFY_TOKEN, ADMIN_ID, WORKER_SECRET_TOKEN } = secrets;
 
-// --- CRITICAL FIX: Resilient Webhook Endpoint for the Worker ---
+// --- NEW WEBHOOK ENDPOINT FOR THE WORKER ---
 app.post('/webhook-delivery', async (req, res) => {
     try {
         // 1. Security Check
@@ -41,45 +41,19 @@ app.post('/webhook-delivery', async (req, res) => {
             console.error(`Delivery received for a non-existent Job ID: ${job_id}`);
             return res.status(404).send('Job Not Found');
         }
+
+        // 4. Construct and Send Message to User
+        const userMessage = `🎉 Hooray! Your account has been created successfully!\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
+        await sendText(job.user_psid, userMessage);
+
+        // 5. Update Job Status to 'delivered'
+        await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
         
-        const user = await dbManager.getUser(job.user_psid);
-        const userLang = user?.lang || 'en';
-
-        const deliveryHeader = lang.getText('delivery_success', userLang);
-        const userMessage = `${deliveryHeader}\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
-        
-        // 4. Attempt to send the message BUT handle failures gracefully
-        try {
-            await sendText(job.user_psid, userMessage);
-            // If message is sent successfully, update job as delivered
-            await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
-            console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
-
-        } catch (deliveryError) {
-            // If sending fails (e.g., user blocked the bot or another API error)
-            console.error(`--- MESSAGE DELIVERY FAILED for Job ID ${job_id} ---`);
-            console.error(deliveryError.message);
-            
-            // Still update the job, but with a different status to indicate a delivery problem
-            const failureMessage = `Account created, but failed to send message to user ${job.user_psid}. They may have blocked the bot.`;
-            await dbManager.updateJobStatus(job_id, 'failed_notified', failureMessage);
-            
-            // Notify the admin with the credentials so they can be delivered manually
-            const adminAlert = `⚠️ Account for Job ID ${job_id} was created, but I couldn't send the details to the user. Please deliver these credentials manually:\n\nUser: \`${username}\`\nPass: \`${password}\``;
-            await sendText(ADMIN_ID, adminAlert);
-        }
-
-        // ALWAYS send a success response to the worker, because the account *was* created.
-        // This stops the worker from thinking a fatal error occurred.
+        console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
         res.status(200).send('OK');
 
     } catch (error) {
-        // This outer catch now only handles critical errors (like the database being down)
-        console.error("--- CRITICAL ERROR in /webhook-delivery ---", error);
-        const job_id = req.body?.job_id || 'Unknown';
-        if (job_id !== 'Unknown') {
-            await dbManager.updateJobStatus(job_id, 'failed', `A critical server error occurred in the webhook receiver: ${error.message}`);
-        }
+        console.error("--- ERROR in /webhook-delivery ---", error);
         res.status(500).send('Internal Server Error');
     }
 });
