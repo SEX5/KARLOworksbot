@@ -3,7 +3,8 @@ const db = require('../database');
 const messengerApi = require('../messenger_api.js');
 const lang = require('../language_manager');
 
-async function showUserMenu(sender_psid, sendQuickReplies, userLang = 'en') {
+// CORRECTED: The function no longer needs sendQuickReplies passed to it.
+async function showUserMenu(sender_psid, userLang = 'en') {
     const adminInfo = await db.getAdminInfo();
     let initialMessage = adminInfo?.is_online ? lang.getText('admin_online', userLang) : lang.getText('admin_offline', userLang);
     await messengerApi.sendText(sender_psid, initialMessage);
@@ -19,7 +20,9 @@ async function showUserMenu(sender_psid, sendQuickReplies, userLang = 'en') {
         { title: lang.getText('menu_option_6_button', userLang), payload: "6" },
         { title: lang.getText('menu_option_7_button', userLang), payload: "7" },
     ];
-    await sendQuickReplies(sender_psid, menuText, replies);
+    
+    // CORRECTED: This now uses the imported messengerApi, just like sendText does.
+    await messengerApi.sendQuickReplies(sender_psid, menuText, replies);
 }
 
 module.exports = { showUserMenu };
