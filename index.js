@@ -40,9 +40,11 @@ app.post('/webhook-delivery', async (req, res) => {
             return res.status(404).send('Job Not Found');
         }
         
+        // FIX: Get user's language to send a translated message
         const user = await dbManager.getUser(job.user_psid);
         const userLang = user?.lang || 'en';
 
+        // FIX: Use translatable language key for the delivery message
         const deliveryHeader = lang.getText('delivery_success', userLang);
         const userMessage = `${deliveryHeader}\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
         await sendText(job.user_psid, userMessage);
