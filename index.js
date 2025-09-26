@@ -252,6 +252,12 @@ async function handleMessage(sender_psid, webhook_event) {
                     case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, received_text, sendText, sendImage, ADMIN_ID, userLang);
                     case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, received_text, sendText, userLang);
                     case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, received_text, sendText, userLang);
+                    // --- FIX START ---
+                    // Handles the user's choice between "Money" or "Gold"
+                    case 'awaiting_custom_mod_type': return userHandler.handleCustomModType(sender_psid, received_text, userLang);
+                    // Handles the amount the user enters (e.g., "8 Million" or "5k")
+                    case 'awaiting_custom_mod_amount': return userHandler.handleCustomModAmount(sender_psid, received_text, userLang);
+                    // --- FIX END ---
                     case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, received_text, sendText, userLang);
                     case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, received_text, sendText, ADMIN_ID, userLang);
                     case 'awaiting_report_ref': return userHandler.processReportRef(sender_psid, received_text, sendText, userLang);
@@ -262,7 +268,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 case '1': return userHandler.handleViewMods(sender_psid, sendText, userLang);
                 case '2': return userHandler.promptForCheckClaims(sender_psid, sendText, userLang);
                 case '3': return userHandler.promptForReplacement(sender_psid, sendText, userLang);
-                case '4': return userHandler.promptForCustomMod(sender_psid, sendText, userLang);
+                case '4': return userHandler.promptForCustomMod(sender_psid, userLang); // Corrected function call from previous bug
                 case '5': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
                 case '6': return userHandler.handleViewProofs(sender_psid, sendText, userLang);
                 case '7': return userHandler.promptForReportRef(sender_psid, sendText, userLang);
