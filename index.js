@@ -1,4 +1,4 @@
-// index.js (Fully Corrected and Refactored)
+// index.js (Final Corrected Version)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -15,44 +15,31 @@ const app = express();
 app.use(express.json());
 const { VERIFY_TOKEN, ADMIN_ID, WORKER_SECRET_TOKEN } = secrets;
 
-// --- WEBHOOK ENDPOINT FOR THE WORKER ---
 app.post('/webhook-delivery', async (req, res) => {
     try {
-        // 1. Security Check
         const authHeader = req.headers.authorization;
         const token = authHeader && authHeader.split(' ')[1];
         if (token !== WORKER_SECRET_TOKEN) {
             console.warn("Unauthorized delivery attempt received.");
             return res.status(403).send('Forbidden');
         }
-
-        // 2. Input Validation
         const { job_id, username, password } = req.body;
         if (!job_id || !username || !password) {
             console.error("Invalid delivery payload received:", req.body);
             return res.status(400).send('Bad Request: Missing required fields.');
         }
-
-        // 3. Get Job Details
         const job = await dbManager.getJobById(job_id);
         if (!job) {
             console.error(`Delivery received for a non-existent Job ID: ${job_id}`);
             return res.status(404).send('Job Not Found');
         }
-
-        // 4. Construct and Send Message to User
         const userMessage = lang.getText('delivery_success', job.lang) + `\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
         await sendText(job.user_psid, userMessage);
-
-        // 5. Update Job Status to 'delivered'
         await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
-        
         console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
         res.status(200).send('OK');
-
     } catch (error) {
         console.error("--- ERROR in /webhook-delivery ---", error);
-        // Attempt to notify admin and user about the delivery failure
         try {
             const { job_id } = req.body;
             if (job_id) {
@@ -69,7 +56,6 @@ app.post('/webhook-delivery', async (req, res) => {
     }
 });
 
-
 async function handleError(error, sender_psid, context = 'Unknown') {
     console.error(`--- ERROR ---`);
     console.error(`Context: ${context}`);
@@ -82,7 +68,6 @@ async function handleError(error, sender_psid, context = 'Unknown') {
         const userName = await getUserProfile(sender_psid);
         const adminMessage = `🚨 AN ERROR OCCURRED 🚨\nContext: ${context}\nUser: ${userName} (${sender_psid})\nError: ${error.message}`;
         await sendText(ADMIN_ID, adminMessage);
-
         await sendText(sender_psid, lang.getText('error_unexpected_user', userLang));
     } catch (e) {
         console.error("Fatal error inside the error handler:", e);
@@ -92,22 +77,18 @@ async function handleError(error, sender_psid, context = 'Unknown') {
 async function handleReceiptSubmission(sender_psid, imageUrl) {
     const userState = stateManager.getUserState(sender_psid);
     const userLang = userState?.lang || 'en';
-    
     await sendText(sender_psid, lang.getText('receipt_analyzing', userLang));
     try {
         const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
-
         const analysis = await paymentVerifier.analyzeReceiptWithFallback(imageUrl, image_b64);
         if (!analysis) throw new Error("AI analysis returned null.");
-
         const receiptsDir = path.join(__dirname, 'receipts');
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
         fs.writeFileSync(imagePath, imageBuffer);
-
         if (userState?.state === 'awaiting_receipt_for_custom_mod') {
             await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
         } else {
@@ -203,7 +184,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
             }
         } else {
-            // --- USER LOGIC (FULLY CORRECTED) ---
+            // --- USER LOGIC (FINAL CORRECTED VERSION) ---
             const isPaused = await dbManager.isUserPaused(sender_psid);
             if (isPaused) return;
 
@@ -222,7 +203,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
                 await dbManager.addUser(sender_psid, lang);
                 stateManager.setUserState(sender_psid, 'language_set', { lang });
-                await userHandler.showUserMenu(sender_psid, lang);
+                await userHandler.showUserMenu(sender_psid, lang); // Corrected Call
                 return;
             }
 
@@ -243,12 +224,12 @@ async function handleMessage(sender_psid, webhook_event) {
                 return;
             }
             if (!received_text || received_text === '' || webhook_event.message?.sticker_id) {
-                return userHandler.showUserMenu(sender_psid, userLang);
+                return userHandler.showUserMenu(sender_psid, userLang); // Corrected Call
             }
             if (lowerCaseText === 'menu') {
                 stateManager.clearUserState(sender_psid);
                 stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-                return userHandler.showUserMenu(sender_psid, userLang);
+                return userHandler.showUserMenu(sender_psid, userLang); // Corrected Call
             }
             if (lowerCaseText === 'my id') { return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`); }
 
@@ -278,7 +259,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 case '5': return userHandler.promptForAdminMessage(sender_psid, userLang);
                 case '6': return userHandler.handleViewProofs(sender_psid, userLang);
                 case '7': return userHandler.promptForReportRef(sender_psid, userLang);
-                default: return userHandler.showUserMenu(sender_psid, userLang);
+                default: return userHandler.showUserMenu(sender_psid, userLang); // Corrected Call
             }
         }
     } catch (error) {
@@ -317,4 +298,4 @@ async function startServer() {
     }
 }
 
-startServer();
+startServer();```
