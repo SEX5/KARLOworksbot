@@ -1,4 +1,4 @@
-// user_handler/purchase_flow.js
+// user_handler/purchase_flow.js (Corrected)
 const db = require('../database');
 const stateManager = require('../state_manager');
 const messengerApi = require('../messenger_api');
@@ -68,34 +68,39 @@ async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, lang: userLang });
 }
 
-async function handleReceiptAnalysis(sender_psid, analysis, sendText, sendQuickReplies, ADMIN_ID, userLang = 'en') {
+// --- FIX APPLIED HERE ---
+// The function definition is now corrected to match the new design.
+async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang = 'en') {
     const precollectedState = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
     const userName = await messengerApi.getUserProfile(sender_psid);
+
+    // This now uses the imported messengerApi correctly.
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
-        await sendText(sender_psid, lang.getText('receipt_fail_read', userLang));
-        await sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount: ${amountStr}, Ref: ${refNumber}.`);
+        await messengerApi.sendText(sender_psid, lang.getText('receipt_fail_read', userLang));
+        await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount: ${amountStr}, Ref: ${refNumber}.`);
         return;
     }
+
     const matchingMods = await db.getModsByPrice(amount);
     if (matchingMods.length === 1) {
         const mod = matchingMods[0];
         const confirmationMsg = lang.getText('receipt_confirm_purchase', userLang)
             .replace('{amount}', amount).replace('{modId}', mod.id).replace('{modName}', mod.name);
         const replies = [{ title: lang.getText('confirm_yes', userLang), payload: "confirm_yes" }, { title: lang.getText('confirm_no', userLang), payload: "confirm_no" }];
-        await sendQuickReplies(sender_psid, confirmationMsg, replies);
+        await messengerApi.sendQuickReplies(sender_psid, confirmationMsg, replies); // Correctly uses messengerApi
         stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.email, lang: userLang });
     } else if (matchingMods.length > 1) {
         let modList = '';
         matchingMods.forEach(m => { modList += `- Mod ${m.id}: ${m.name}\n`; });
         const clarificationMsg = lang.getText('receipt_clarify_purchase', userLang).replace('{amount}', amount).replace('{modList}', modList);
-        await sendText(sender_psid, clarificationMsg);
+        await messengerApi.sendText(sender_psid, clarificationMsg); // Correctly uses messengerApi
         stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.email, lang: userLang });
     } else {
-        await sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount));
-        await sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
+        await messengerApi.sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount)); // Correctly uses messengerApi
+        await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
     }
 }
 
