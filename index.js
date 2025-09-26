@@ -1,13 +1,11 @@
-// index.js (Fully Corrected, Compatible with Original admin_handler.js and user_handler.js)
+// index.js (Fully Corrected and Refactored)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const dbManager = require('./database.js');
 const stateManager = require('./state_manager.js');
-// --- NOTE: These lines point to your original, single-file handlers ---
 const userHandler = require('./user_handler'); 
 const adminHandler = require('./admin_handler.js');
-// ---
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
 const { sendText, sendImage, sendQuickReplies, getUserProfile } = require('./messenger_api.js');
@@ -17,7 +15,7 @@ const app = express();
 app.use(express.json());
 const { VERIFY_TOKEN, ADMIN_ID, WORKER_SECRET_TOKEN } = secrets;
 
-// --- NEW WEBHOOK ENDPOINT FOR THE WORKER ---
+// --- WEBHOOK ENDPOINT FOR THE WORKER ---
 app.post('/webhook-delivery', async (req, res) => {
     try {
         // 1. Security Check
@@ -43,7 +41,7 @@ app.post('/webhook-delivery', async (req, res) => {
         }
 
         // 4. Construct and Send Message to User
-        const userMessage = `🎉 Hooray! Your account has been created successfully!\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
+        const userMessage = lang.getText('delivery_success', job.lang) + `\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
         await sendText(job.user_psid, userMessage);
 
         // 5. Update Job Status to 'delivered'
@@ -54,6 +52,19 @@ app.post('/webhook-delivery', async (req, res) => {
 
     } catch (error) {
         console.error("--- ERROR in /webhook-delivery ---", error);
+        // Attempt to notify admin and user about the delivery failure
+        try {
+            const { job_id } = req.body;
+            if (job_id) {
+                const job = await dbManager.getJobById(job_id);
+                if (job) {
+                    await sendText(job.user_psid, lang.getText('delivery_failed_user', job.lang));
+                    await sendText(ADMIN_ID, `🚨 AUTOMATION DELIVERY FAILED! 🚨\nJob ID ${job_id} for user ${job.user_psid} could not be delivered after creation. Please intervene manually.`);
+                }
+            }
+        } catch (notificationError) {
+            console.error("--- FATAL ERROR in delivery error handler ---", notificationError);
+        }
         res.status(500).send('Internal Server Error');
     }
 });
@@ -100,11 +111,11 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         if (userState?.state === 'awaiting_receipt_for_custom_mod') {
             await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
         } else {
-            await userHandler.handleReceiptAnalysis(sender_psid, analysis, sendText, sendQuickReplies, ADMIN_ID, userLang);
+            await userHandler.handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang);
         }
     } catch (error) {
         if (userState?.state === 'awaiting_receipt_for_purchase') {
-            await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl, userLang);
+            await userHandler.startManualEntryFlow(sender_psid, imageUrl, userLang);
         } else {
             await handleError(error, sender_psid, 'Receipt Submission');
         }
@@ -192,7 +203,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
             }
         } else {
-            // --- USER LOGIC ---
+            // --- USER LOGIC (FULLY CORRECTED) ---
             const isPaused = await dbManager.isUserPaused(sender_psid);
             if (isPaused) return;
 
@@ -211,7 +222,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
                 await dbManager.addUser(sender_psid, lang);
                 stateManager.setUserState(sender_psid, 'language_set', { lang });
-                await userHandler.showUserMenu(sender_psid, sendQuickReplies, lang);
+                await userHandler.showUserMenu(sender_psid, lang);
                 return;
             }
 
@@ -232,47 +243,42 @@ async function handleMessage(sender_psid, webhook_event) {
                 return;
             }
             if (!received_text || received_text === '' || webhook_event.message?.sticker_id) {
-                return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
+                return userHandler.showUserMenu(sender_psid, userLang);
             }
             if (lowerCaseText === 'menu') {
                 stateManager.clearUserState(sender_psid);
                 stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-                return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
+                return userHandler.showUserMenu(sender_psid, userLang);
             }
             if (lowerCaseText === 'my id') { return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`); }
 
             const state = userStateObj?.state;
             if (state) {
                 switch (state) {
-                    case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, lowerCaseText, sendText, ADMIN_ID, userLang);
-                    case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, received_text, sendText, sendQuickReplies, ADMIN_ID, userLang);
-                    case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, received_text, sendText, sendImage, ADMIN_ID, userLang);
-                    case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, received_text, sendText, userLang);
-                    // --- FIX START ---
-                    // Handles the user's choice between "Money" or "Gold"
+                    case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, received_text, userLang);
+                    case 'awaiting_email_for_purchase': return userHandler.handleEmailForPurchase(sender_psid, received_text, userLang);
+                    case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, lowerCaseText, ADMIN_ID, userLang);
+                    case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, received_text, ADMIN_ID, userLang);
+                    case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, received_text, userLang);
+                    case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, received_text, sendImage, ADMIN_ID, userLang);
+                    case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, received_text, userLang);
+                    case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, received_text, userLang);
                     case 'awaiting_custom_mod_type': return userHandler.handleCustomModType(sender_psid, received_text, userLang);
-                    // Handles the amount the user enters (e.g., "8 Million" or "5k")
                     case 'awaiting_custom_mod_amount': return userHandler.handleCustomModAmount(sender_psid, received_text, userLang);
-                    // --- FIX END ---
-                    case 'awaiting_custom_mod_order': return userHandler.handleCustomModOrder(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, received_text, sendText, ADMIN_ID, userLang);
-                    case 'awaiting_report_ref': return userHandler.processReportRef(sender_psid, received_text, sendText, userLang);
-                    case 'awaiting_report_issue_desc': return userHandler.processReportDescription(sender_psid, received_text, sendText, ADMIN_ID, userLang);
+                    case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, received_text, ADMIN_ID, userLang);
+                    case 'awaiting_report_ref': return userHandler.processReportRef(sender_psid, received_text, userLang);
+                    case 'awaiting_report_issue_desc': return userHandler.processReportDescription(sender_psid, received_text, ADMIN_ID, userLang);
                 }
             }
             switch (lowerCaseText) {
-                case '1': return userHandler.handleViewMods(sender_psid, sendText, userLang);
-                case '2': return userHandler.promptForCheckClaims(sender_psid, sendText, userLang);
-                case '3': return userHandler.promptForReplacement(sender_psid, sendText, userLang);
-                case '4': return userHandler.promptForCustomMod(sender_psid, userLang); // Corrected function call from previous bug
-                case '5': return userHandler.promptForAdminMessage(sender_psid, sendText, userLang);
-                case '6': return userHandler.handleViewProofs(sender_psid, sendText, userLang);
-                case '7': return userHandler.promptForReportRef(sender_psid, sendText, userLang);
-                default: return userHandler.showUserMenu(sender_psid, sendQuickReplies, userLang);
+                case '1': return userHandler.handleViewMods(sender_psid, userLang);
+                case '2': return userHandler.promptForCheckClaims(sender_psid, userLang);
+                case '3': return userHandler.promptForReplacement(sender_psid, userLang);
+                case '4': return userHandler.promptForCustomMod(sender_psid, userLang);
+                case '5': return userHandler.promptForAdminMessage(sender_psid, userLang);
+                case '6': return userHandler.handleViewProofs(sender_psid, userLang);
+                case '7': return userHandler.promptForReportRef(sender_psid, userLang);
+                default: return userHandler.showUserMenu(sender_psid, userLang);
             }
         }
     } catch (error) {
