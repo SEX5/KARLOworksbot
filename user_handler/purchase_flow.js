@@ -68,8 +68,6 @@ async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, lang: userLang });
 }
 
-// --- FIX APPLIED HERE ---
-// The function definition is now corrected to match the new design.
 async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang = 'en') {
     const precollectedState = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
@@ -77,7 +75,6 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
     const userName = await messengerApi.getUserProfile(sender_psid);
 
-    // This now uses the imported messengerApi correctly.
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_fail_read', userLang));
         await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount: ${amountStr}, Ref: ${refNumber}.`);
@@ -90,23 +87,26 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
         const confirmationMsg = lang.getText('receipt_confirm_purchase', userLang)
             .replace('{amount}', amount).replace('{modId}', mod.id).replace('{modName}', mod.name);
         const replies = [{ title: lang.getText('confirm_yes', userLang), payload: "confirm_yes" }, { title: lang.getText('confirm_no', userLang), payload: "confirm_no" }];
-        await messengerApi.sendQuickReplies(sender_psid, confirmationMsg, replies); // Correctly uses messengerApi
+        await messengerApi.sendQuickReplies(sender_psid, confirmationMsg, replies);
         stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.email, lang: userLang });
     } else if (matchingMods.length > 1) {
         let modList = '';
         matchingMods.forEach(m => { modList += `- Mod ${m.id}: ${m.name}\n`; });
         const clarificationMsg = lang.getText('receipt_clarify_purchase', userLang).replace('{amount}', amount).replace('{modList}', modList);
-        await messengerApi.sendText(sender_psid, clarificationMsg); // Correctly uses messengerApi
+        await messengerApi.sendText(sender_psid, clarificationMsg);
         stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.email, lang: userLang });
     } else {
-        await messengerApi.sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount)); // Correctly uses messengerApi
+        await messengerApi.sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount));
         await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
     }
 }
 
 async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en') {
     const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
-    if (text.toLowerCase() === 'confirm_yes') {
+    
+    // --- THIS IS THE FIX ---
+    // It now accepts the payload 'confirm_yes' AND the typed word 'yes'.
+    if (text.toLowerCase() === 'confirm_yes' || text.toLowerCase() === 'yes') {
         try {
             const userName = await messengerApi.getUserProfile(sender_psid);
             await db.addReference(refNumber, sender_psid, modId);
