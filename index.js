@@ -1,4 +1,4 @@
-// index.js (Final Corrected Version with Diagnostic Logging)
+// index.js (Final Corrected Version with All Fixes and Logging)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -79,25 +79,24 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
     const userLang = userState?.lang || 'en';
     await sendText(sender_psid, lang.getText('receipt_analyzing', userLang));
 
-    // --- ADDED LOGGING ---
+    // Set a temporary state to prevent interruptions during AI analysis
+    stateManager.setUserState(sender_psid, 'processing_receipt', { ...(userState.data || {}), lang: userLang });
+
     console.log(`[RECEIPT-STEP 1] Received image for analysis. URL: ${imageUrl}`);
 
     try {
         const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
 
-        // --- ADDED LOGGING ---
         console.log(`[RECEIPT-STEP 2] Successfully downloaded image. Buffer size: ${imageBuffer.length} bytes.`);
 
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
 
-        // --- ADDED LOGGING ---
         console.log(`[RECEIPT-STEP 3] Image encoded. Calling AI for analysis...`);
 
         const analysis = await paymentVerifier.analyzeReceiptWithFallback(imageUrl, image_b64);
 
-        // --- ADDED LOGGING ---
         console.log(`[RECEIPT-STEP 6] Received analysis from AI:`, JSON.stringify(analysis, null, 2));
 
         if (!analysis) throw new Error("AI analysis returned null.");
@@ -107,16 +106,24 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
         fs.writeFileSync(imagePath, imageBuffer);
 
-        if (userState?.state === 'awaiting_receipt_for_custom_mod') {
-            await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
+        const currentStateAfterAnalysis = stateManager.getUserState(sender_psid);
+        // Only proceed if the state is still 'processing_receipt'
+        if (currentStateAfterAnalysis && currentStateAfterAnalysis.state === 'processing_receipt') {
+            if (currentStateAfterAnalysis.data?.orderType) { // Check for custom mod
+                await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
+            } else {
+                await userHandler.handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang);
+            }
         } else {
-            await userHandler.handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang);
+            console.warn(`[WARN] Receipt analysis for ${sender_psid} finished, but state was no longer 'processing_receipt'. State is now: ${currentStateAfterAnalysis?.state}. Aborting post-analysis actions.`);
         }
+
     } catch (error) {
-        // --- ADDED LOGGING ---
         console.error(`--- CRITICAL FAILURE IN handleReceiptSubmission ---`, error);
 
-        if (userState?.state === 'awaiting_receipt_for_purchase') {
+        const currentState = stateManager.getUserState(sender_psid);
+        // Only trigger manual flow if we are still in the processing state.
+        if (currentState && currentState.state === 'processing_receipt') {
             await userHandler.startManualEntryFlow(sender_psid, imageUrl, userLang);
         } else {
             await handleError(error, sender_psid, 'Receipt Submission');
@@ -143,6 +150,7 @@ async function handleMessage(sender_psid, webhook_event) {
         }
 
         if (isAdmin) {
+            // Admin logic remains unchanged...
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
             if (lowerCaseText === 'menu') {
@@ -224,12 +232,21 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
                 await dbManager.addUser(sender_psid, lang);
                 stateManager.setUserState(sender_psid, 'language_set', { lang });
-                await userHandler.showUserMenu(sender_psid, lang); // Corrected Call
+                await userHandler.showUserMenu(sender_psid, lang);
                 return;
             }
 
             const userLang = userStateObj.lang;
-            const expectingReceipt = userStateObj?.state === 'awaiting_receipt_for_purchase' || userStateObj?.state === 'awaiting_receipt_for_custom_mod';
+            const state = userStateObj?.state;
+
+            // --- THIS IS THE NEW LOGIC TO HANDLE INTERRUPTIONS ---
+            if (state === 'processing_receipt') {
+                await sendText(sender_psid, lang.getText('processing_receipt_wait', userLang));
+                return; // Ignore the user's message and stop further processing
+            }
+            // --- END OF NEW LOGIC ---
+
+            const expectingReceipt = state === 'awaiting_receipt_for_purchase' || state === 'awaiting_receipt_for_custom_mod';
 
             if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
                 if (!webhook_event.message?.sticker_id) {
@@ -245,16 +262,15 @@ async function handleMessage(sender_psid, webhook_event) {
                 return;
             }
             if (!received_text || received_text === '' || webhook_event.message?.sticker_id) {
-                return userHandler.showUserMenu(sender_psid, userLang); // Corrected Call
+                return userHandler.showUserMenu(sender_psid, userLang);
             }
             if (lowerCaseText === 'menu') {
                 stateManager.clearUserState(sender_psid);
                 stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
-                return userHandler.showUserMenu(sender_psid, userLang); // Corrected Call
+                return userHandler.showUserMenu(sender_psid, userLang);
             }
             if (lowerCaseText === 'my id') { return sendText(sender_psid, `Your Facebook Page-Scoped ID is: ${sender_psid}`); }
 
-            const state = userStateObj?.state;
             if (state) {
                 switch (state) {
                     case 'awaiting_want_mod': return userHandler.handleWantMod(sender_psid, received_text, userLang);
@@ -280,7 +296,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 case '5': return userHandler.promptForAdminMessage(sender_psid, userLang);
                 case '6': return userHandler.handleViewProofs(sender_psid, userLang);
                 case '7': return userHandler.promptForReportRef(sender_psid, userLang);
-                default: return userHandler.showUserMenu(sender_psid, userLang); // Corrected Call
+                default: return userHandler.showUserMenu(sender_psid, userLang);
             }
         }
     } catch (error) {
