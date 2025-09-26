@@ -1,4 +1,4 @@
-// payment_verifier.js (Corrected and Updated with Diagnostic Logging)
+// payment_verifier.js (Fully Corrected Version with q= parameter first)
 const axios = require('axios');
 const sharp = require('sharp');
 const secrets = require('./secrets.js');
@@ -27,12 +27,8 @@ Respond in this exact JSON format. Do not include any other text, comments, or m
 `;
 
 const KAIZ_ANALYSIS_PROMPT = `
-You are a payment verification assistant. Analyze the provided GCash receipt screenshot.
-INSTRUCTIONS:
-1. Extract the Reference Number, Amount, and Date.
-2. Check for signs of digital editing like mismatched fonts, blurriness, or misalignment.
-3. Make a final decision: APPROVED (looks real), FLAGGED (suspicious, needs human check), or REJECTED (clearly fake).
-Respond ONLY in this exact JSON format. No extra text or markdown.
+CRITICAL INSTRUCTION: Analyze the provided GCash receipt. YOU MUST ONLY reply with a valid JSON object in the specified format. Do not add any introductory text, markdown, or explanations. Your entire response must be the JSON object itself.
+
 {
     "extracted_info": {
         "reference_number": "The 13-digit reference number, or 'Not Found'",
@@ -61,7 +57,6 @@ async function encodeImage(imageBuffer) {
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function sendGeminiRequest(image_b64) {
-    const maxRetries = 3;
     const payload = {
         "contents": [{
             "parts": [
@@ -71,33 +66,22 @@ async function sendGeminiRequest(image_b64) {
         }]
     };
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            console.log(`Sending request to Gemini Vision API (Attempt ${attempt}/${maxRetries})...`);
-            const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 60000 });
-
-            if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                let content = response.data.candidates[0].content.parts[0].text;
-                content = content.trim().replace('```json', '').replace('```', '');
-                return JSON.parse(content);
-            } else {
-                console.error("Invalid response structure from Gemini API:", response.data);
-                throw new Error("Invalid response structure from Gemini.");
-            }
-        } catch (error) {
-            const isOverloaded = error.response?.status === 503;
-            const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
-
-            console.error(`Gemini request failed on attempt ${attempt}:`, errorMessage);
-
-            if (isOverloaded && attempt < maxRetries) {
-                const delayTime = 1500 * attempt;
-                console.log(`Model is overloaded. Retrying in ${delayTime / 1000} seconds...`);
-                await delay(delayTime);
-            } else if (attempt === maxRetries) {
-                 throw new Error(errorMessage);
-            }
+    try {
+        console.log(`Sending request to Gemini Vision API...`);
+        const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 60000 });
+        
+        if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+            let content = response.data.candidates[0].content.parts[0].text;
+            content = content.trim().replace('```json', '').replace('```', '');
+            return JSON.parse(content);
+        } else {
+            console.error("Invalid response structure from Gemini API:", response.data);
+            throw new Error("Invalid response structure from Gemini.");
         }
+    } catch (error) {
+        const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
+        console.error(`Gemini request failed:`, errorMessage);
+        throw new Error(errorMessage);
     }
 }
 
@@ -109,17 +93,19 @@ function createErrorJson(reason) {
     };
 }
 
+
 async function sendKaizRequest(imageUrl) {
     console.log("Attempting analysis with Primary API (Kaiz-APIs)...");
     const encodedPrompt = encodeURIComponent(KAIZ_ANALYSIS_PROMPT);
     const encodedImageUrl = encodeURIComponent(imageUrl);
-    const KAIZ_API_URL = `https://kaiz-apis.gleeze.com/gemini-pro-vision?uid=3&q=${encodedPrompt}&imageUrl=${encodedImageUrl}&apikey=${KAIZ_API_KEY}`;
+    
+    // --- EDITED THIS LINE AS REQUESTED ---
+    const KAIZ_API_URL = `https://kaiz-apis.gleeze.com/api/gemini-vision?q=${encodedPrompt}&uid=3&imageUrl=${encodedImageUrl}&apikey=${KAIZ_API_KEY}`;
 
     try {
         const response = await axios.get(KAIZ_API_URL, { timeout: 45000 });
 
-        // --- ADDED LOGGING ---
-        console.log(`[RECEIPT-STEP 4A - KAIZ] Raw response received:`, response.data);
+        console.log(`[KAIZ API] Raw response received:`, response.data);
 
         if (!response.data || !response.data.response) {
             throw new Error(`Kaiz-API responded with an error: ${response.data.error || 'No response data'}`);
@@ -127,8 +113,8 @@ async function sendKaizRequest(imageUrl) {
 
         const rawText = response.data.response;
         const jsonMatch = rawText.match(/({[\s\S]*})/);
-        if (jsonMatch) {
-            const parsedJson = JSON.parse(jsonMatch[1]);
+        if (jsonMatch && jsonMatch[0]) {
+            const parsedJson = JSON.parse(jsonMatch[0]);
             if (parsedJson.verification_status && parsedJson.extracted_info) {
                 console.log("Primary API (Kaiz-APIs) analysis successful.");
                 return parsedJson;
@@ -137,8 +123,7 @@ async function sendKaizRequest(imageUrl) {
         throw new Error("Response from Kaiz-APIs did not contain a valid JSON object.");
 
     } catch (error) {
-        // --- ADDED LOGGING ---
-        console.error("[RECEIPT-STEP 4A - KAIZ] Primary API (Kaiz-APIs) request FAILED:", error.message);
+        console.error("Primary API (Kaiz-APIs) request failed:", error.message);
         throw error; // Propagate the error to trigger the fallback
     }
 }
@@ -150,8 +135,6 @@ async function analyzeReceiptWithFallback(imageUrl, image_b64) {
     } catch (primaryError) {
         console.warn("Primary API (Kaiz-APIs) failed. Proceeding to Fallback API (Gemini)...");
         try {
-            // --- ADDED LOGGING ---
-            console.log(`[RECEIPT-STEP 4B - Gemini] Calling Fallback API...`);
             const fallbackResult = await sendGeminiRequest(image_b64);
             return fallbackResult;
         } catch (fallbackError) {
