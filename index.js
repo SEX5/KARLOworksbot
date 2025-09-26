@@ -1,10 +1,10 @@
-// index.js (Final Corrected Version)
+// index.js (Final Corrected Version with Diagnostic Logging)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const dbManager = require('./database.js');
 const stateManager = require('./state_manager.js');
-const userHandler = require('./user_handler'); 
+const userHandler = require('./user_handler');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
@@ -78,23 +78,44 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
     const userState = stateManager.getUserState(sender_psid);
     const userLang = userState?.lang || 'en';
     await sendText(sender_psid, lang.getText('receipt_analyzing', userLang));
+
+    // --- ADDED LOGGING ---
+    console.log(`[RECEIPT-STEP 1] Received image for analysis. URL: ${imageUrl}`);
+
     try {
         const imageResponse = await require('axios')({ url: imageUrl, responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+
+        // --- ADDED LOGGING ---
+        console.log(`[RECEIPT-STEP 2] Successfully downloaded image. Buffer size: ${imageBuffer.length} bytes.`);
+
         const image_b64 = await paymentVerifier.encodeImage(imageBuffer);
         if (!image_b64) throw new Error("Failed to encode image.");
+
+        // --- ADDED LOGGING ---
+        console.log(`[RECEIPT-STEP 3] Image encoded. Calling AI for analysis...`);
+
         const analysis = await paymentVerifier.analyzeReceiptWithFallback(imageUrl, image_b64);
+
+        // --- ADDED LOGGING ---
+        console.log(`[RECEIPT-STEP 6] Received analysis from AI:`, JSON.stringify(analysis, null, 2));
+
         if (!analysis) throw new Error("AI analysis returned null.");
+
         const receiptsDir = path.join(__dirname, 'receipts');
         if (!fs.existsSync(receiptsDir)) { fs.mkdirSync(receiptsDir); }
         const imagePath = path.join(receiptsDir, `${sender_psid}_${Date.now()}.png`);
         fs.writeFileSync(imagePath, imageBuffer);
+
         if (userState?.state === 'awaiting_receipt_for_custom_mod') {
             await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
         } else {
             await userHandler.handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang);
         }
     } catch (error) {
+        // --- ADDED LOGGING ---
+        console.error(`--- CRITICAL FAILURE IN handleReceiptSubmission ---`, error);
+
         if (userState?.state === 'awaiting_receipt_for_purchase') {
             await userHandler.startManualEntryFlow(sender_psid, imageUrl, userLang);
         } else {
@@ -289,13 +310,4 @@ async function startServer() {
                 res.status(200).send('EVENT_RECEIVED');
             } else { res.sendStatus(404); }
         });
-        const PORT = process.env.PORT || 3000;
-        const HOST = '0.0.0.0';
-        app.listen(PORT, HOST, () => { console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); });
-    } catch (error) {
-        console.error("Server failed to start:", error);
-        process.exit(1);
-    }
-}
-
-startServer();
+        const PORT = pro
