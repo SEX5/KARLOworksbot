@@ -292,8 +292,7 @@ async function startServer() {
         await dbManager.setupDatabase();
         app.get('/', (req, res) => { res.status(200).send('Bot is online and healthy.'); });
         app.get('/webhook', (req, res) => {
-            // FIX: Correctly read from req.query for GET requests
-            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
+            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.body;
             if (mode === 'subscribe' && token === VERIFY_TOKEN) {
                 console.log("Webhook verified successfully!");
                 res.status(200).send(challenge);
