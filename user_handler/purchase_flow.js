@@ -1,4 +1,4 @@
-// user_handler/purchase_flow.js (Corrected)
+// user_handler/purchase_flow.js (Corrected with better logging)
 const db = require('../database');
 const stateManager = require('../state_manager');
 const messengerApi = require('../messenger_api');
@@ -53,7 +53,6 @@ async function handleWantMod(sender_psid, text, userLang = 'en') {
 }
 
 async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
-    // --- FIX: Accessing state directly as per the base file ---
     const { modId } = stateManager.getUserState(sender_psid); 
     const email = text.trim();
     const replies = [{ title: "⬅️ Back to Menu", payload: "menu" }];
@@ -70,7 +69,6 @@ async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
 }
 
 async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang = 'en') {
-    // --- FIX: Accessing state data directly as per the base file ---
     const precollectedState = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
@@ -83,11 +81,24 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
         console.error("Failed to fetch user profile, using default name.", e);
     }
 
+    // --- ENHANCED LOGGING TO DIAGNOSE THE PROBLEM ---
+    console.log(`[VALIDATION-CHECK] Checking extracted data for user ${sender_psid}:`);
+    console.log(` -> Raw Amount from AI: "${analysis.extracted_info?.amount}"`);
+    console.log(` -> Cleaned Amount String: "${amountStr}" -> Parsed Amount: ${amount}`);
+    console.log(` -> Raw Ref from AI: "${analysis.extracted_info?.reference_number}"`);
+    console.log(` -> Cleaned Ref Number: "${refNumber}" -> Length: ${refNumber.length}`);
+
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
+        // --- NEW LOG ---
+        console.error(`[VALIDATION-FAILED] Data for user ${sender_psid} did not pass validation.`);
+        
         await messengerApi.sendText(sender_psid, lang.getText('receipt_fail_read', userLang));
         await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount: ${amountStr}, Ref: ${refNumber}.`);
         return;
     }
+
+    // --- NEW LOG ---
+    console.log(`[VALIDATION-PASSED] Data for user ${sender_psid} is valid. Proceeding.`);
 
     const matchingMods = await db.getModsByPrice(amount);
     if (matchingMods.length === 1) {
@@ -114,7 +125,6 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
 }
 
 async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en') {
-    // --- FIX: Accessing state directly as per the base file ---
     const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
     
     if (text.toLowerCase() === 'confirm_yes' || text.toLowerCase() === 'yes') {
@@ -149,7 +159,6 @@ async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en
 }
 
 async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'en') {
-    // --- FIX: Accessing state directly as per the base file ---
     const { refNumber, email } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
     try {
