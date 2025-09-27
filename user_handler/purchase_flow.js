@@ -53,7 +53,8 @@ async function handleWantMod(sender_psid, text, userLang = 'en') {
 }
 
 async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
-    const { modId } = stateManager.getUserState(sender_psid).data; // Correctly get from data
+    // --- FIX: Accessing state directly as per the base file ---
+    const { modId } = stateManager.getUserState(sender_psid); 
     const email = text.trim();
     const replies = [{ title: "⬅️ Back to Menu", payload: "menu" }];
     if (!/\S+@\S+\.\S+/.test(email)) {
@@ -69,13 +70,13 @@ async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
 }
 
 async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang = 'en') {
+    // --- FIX: Accessing state data directly as per the base file ---
     const precollectedState = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
     
-    // Defensive coding for the user profile fetch
-    let userName = 'A User'; // Default value
+    let userName = 'A User';
     try {
         userName = await messengerApi.getUserProfile(sender_psid);
     } catch (e) {
@@ -96,9 +97,7 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
         const replies = [{ title: lang.getText('confirm_yes', userLang), payload: "confirm_yes" }, { title: lang.getText('confirm_no', userLang), payload: "confirm_no" }];
         await messengerApi.sendQuickReplies(sender_psid, confirmationMsg, replies);
         
-        // --- THIS IS THE FIX ---
-        // Correctly accessing '.data.email' to pass the email to the next state
-        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.data?.email, lang: userLang });
+        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.email, lang: userLang });
 
     } else if (matchingMods.length > 1) {
         let modList = '';
@@ -106,8 +105,7 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
         const clarificationMsg = lang.getText('receipt_clarify_purchase', userLang).replace('{amount}', amount).replace('{modList}', modList);
         await messengerApi.sendText(sender_psid, clarificationMsg);
         
-        // --- THIS IS THE FIX (Applied here too for consistency) ---
-        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.data?.email, lang: userLang });
+        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.email, lang: userLang });
 
     } else {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount));
@@ -116,7 +114,8 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
 }
 
 async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en') {
-    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid).data;
+    // --- FIX: Accessing state directly as per the base file ---
+    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
     
     if (text.toLowerCase() === 'confirm_yes' || text.toLowerCase() === 'yes') {
         try {
@@ -150,7 +149,8 @@ async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en
 }
 
 async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'en') {
-    const { refNumber, email } = stateManager.getUserState(sender_psid).data;
+    // --- FIX: Accessing state directly as per the base file ---
+    const { refNumber, email } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
     try {
         const mod = await db.getModById(modId);
