@@ -155,7 +155,7 @@ async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en
         await messengerApi.sendText(sender_psid, lang.getText('receipt_transaction_cancelled', userLang));
     }
     stateManager.clearUserState(sender_psid);
-    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+    // REMOVED: stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'en') {
@@ -187,7 +187,7 @@ async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'e
         } else { throw e; }
     }
     stateManager.clearUserState(sender_psid);
-    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+    // REMOVED: stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 module.exports = {
