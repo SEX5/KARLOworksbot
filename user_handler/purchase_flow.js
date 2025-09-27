@@ -53,7 +53,7 @@ async function handleWantMod(sender_psid, text, userLang = 'en') {
 }
 
 async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
-    const { modId } = stateManager.getUserState(sender_psid);
+    const { modId } = stateManager.getUserState(sender_psid).data; // Correctly get from data
     const email = text.trim();
     const replies = [{ title: "⬅️ Back to Menu", payload: "menu" }];
     if (!/\S+@\S+\.\S+/.test(email)) {
@@ -73,7 +73,14 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
-    const userName = await messengerApi.getUserProfile(sender_psid);
+    
+    // Defensive coding for the user profile fetch
+    let userName = 'A User'; // Default value
+    try {
+        userName = await messengerApi.getUserProfile(sender_psid);
+    } catch (e) {
+        console.error("Failed to fetch user profile, using default name.", e);
+    }
 
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_fail_read', userLang));
@@ -88,13 +95,20 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
             .replace('{amount}', amount).replace('{modId}', mod.id).replace('{modName}', mod.name);
         const replies = [{ title: lang.getText('confirm_yes', userLang), payload: "confirm_yes" }, { title: lang.getText('confirm_no', userLang), payload: "confirm_no" }];
         await messengerApi.sendQuickReplies(sender_psid, confirmationMsg, replies);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.email, lang: userLang });
+        
+        // --- THIS IS THE FIX ---
+        // Correctly accessing '.data.email' to pass the email to the next state
+        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.data?.email, lang: userLang });
+
     } else if (matchingMods.length > 1) {
         let modList = '';
         matchingMods.forEach(m => { modList += `- Mod ${m.id}: ${m.name}\n`; });
         const clarificationMsg = lang.getText('receipt_clarify_purchase', userLang).replace('{amount}', amount).replace('{modList}', modList);
         await messengerApi.sendText(sender_psid, clarificationMsg);
-        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.email, lang: userLang });
+        
+        // --- THIS IS THE FIX (Applied here too for consistency) ---
+        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.data?.email, lang: userLang });
+
     } else {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount));
         await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
@@ -102,13 +116,13 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
 }
 
 async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en') {
-    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
+    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid).data;
     
-    // --- THIS IS THE FIX ---
-    // It now accepts the payload 'confirm_yes' AND the typed word 'yes'.
     if (text.toLowerCase() === 'confirm_yes' || text.toLowerCase() === 'yes') {
         try {
-            const userName = await messengerApi.getUserProfile(sender_psid);
+            let userName = 'A User';
+            try { userName = await messengerApi.getUserProfile(sender_psid); } catch (e) { console.error("Failed to fetch user profile, using default name.", e); }
+
             await db.addReference(refNumber, sender_psid, modId);
 
             const password = generatePassword();
@@ -122,7 +136,8 @@ async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en
 
         } catch (e) {
             if (e.message === 'Duplicate reference number') {
-                const userName = await messengerApi.getUserProfile(sender_psid);
+                let userName = 'A User';
+                try { userName = await messengerApi.getUserProfile(sender_psid); } catch (e) { console.error("Failed to fetch user profile, using default name.", e); }
                 await messengerApi.sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
                 await messengerApi.sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a DUPLICATE reference: ${refNumber}`);
             } else { throw e; }
@@ -135,7 +150,7 @@ async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en
 }
 
 async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'en') {
-    const { refNumber, email } = stateManager.getUserState(sender_psid);
+    const { refNumber, email } = stateManager.getUserState(sender_psid).data;
     const modId = parseInt(text.trim());
     try {
         const mod = await db.getModById(modId);
@@ -143,7 +158,9 @@ async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'e
             await messengerApi.sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
             return;
         }
-        const userName = await messengerApi.getUserProfile(sender_psid);
+        let userName = 'A User';
+        try { userName = await messengerApi.getUserProfile(sender_psid); } catch (e) { console.error("Failed to fetch user profile, using default name.", e); }
+
         await db.addReference(refNumber, sender_psid, modId);
         
         const password = generatePassword();
