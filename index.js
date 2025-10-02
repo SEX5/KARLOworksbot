@@ -1,4 +1,4 @@
-// index.js (Final Corrected Version with All Fixes and Logging)
+// index.js (Final Corrected Version with All Fixes)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -79,9 +79,6 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
     const userLang = userState?.lang || 'en';
     await sendText(sender_psid, lang.getText('receipt_analyzing', userLang));
 
-    // Set a temporary state to prevent interruptions during AI analysis
-    stateManager.setUserState(sender_psid, 'processing_receipt', { ...(userState.data || {}), lang: userLang });
-
     console.log(`[RECEIPT-STEP 1] Received image for analysis. URL: ${imageUrl}`);
 
     try {
@@ -150,7 +147,7 @@ async function handleMessage(sender_psid, webhook_event) {
         }
 
         if (isAdmin) {
-            // Admin logic remains unchanged...
+            // --- ADMIN LOGIC RESTORED ---
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
             if (lowerCaseText === 'menu') {
@@ -213,7 +210,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
             }
         } else {
-            // --- USER LOGIC (FINAL CORRECTED VERSION) ---
+            // --- USER LOGIC (WITH RACE CONDITION FIX) ---
             const isPaused = await dbManager.isUserPaused(sender_psid);
             if (isPaused) return;
 
@@ -239,18 +236,20 @@ async function handleMessage(sender_psid, webhook_event) {
             const userLang = userStateObj.lang;
             const state = userStateObj?.state;
 
-            // --- THIS IS THE NEW LOGIC TO HANDLE INTERRUPTIONS ---
             if (state === 'processing_receipt') {
                 await sendText(sender_psid, lang.getText('processing_receipt_wait', userLang));
-                return; // Ignore the user's message and stop further processing
+                return; 
             }
-            // --- END OF NEW LOGIC ---
 
             const expectingReceipt = state === 'awaiting_receipt_for_purchase' || state === 'awaiting_receipt_for_custom_mod';
 
             if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
                 if (!webhook_event.message?.sticker_id) {
                     const imageUrl = webhook_event.message.attachments[0].payload.url;
+
+                    const currentState = stateManager.getUserState(sender_psid);
+                    stateManager.setUserState(sender_psid, 'processing_receipt', { ...(currentState.data || {}), lang: userLang });
+                    
                     await handleReceiptSubmission(sender_psid, imageUrl);
                 }
                 return;
@@ -336,4 +335,3 @@ async function startServer() {
 }
 
 startServer();
-
