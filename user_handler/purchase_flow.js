@@ -1,4 +1,4 @@
-// user_handler/purchase_flow.js (Corrected with better logging)
+// user_handler/purchase_flow.js (Corrected with proper state reset)
 const db = require('../database');
 const stateManager = require('../state_manager');
 const messengerApi = require('../messenger_api');
@@ -89,15 +89,12 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
     console.log(` -> Cleaned Ref Number: "${refNumber}" -> Length: ${refNumber.length}`);
 
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
-        // --- NEW LOG ---
         console.error(`[VALIDATION-FAILED] Data for user ${sender_psid} did not pass validation.`);
-        
         await messengerApi.sendText(sender_psid, lang.getText('receipt_fail_read', userLang));
         await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount: ${amountStr}, Ref: ${refNumber}.`);
         return;
     }
 
-    // --- NEW LOG ---
     console.log(`[VALIDATION-PASSED] Data for user ${sender_psid} is valid. Proceeding.`);
 
     const matchingMods = await db.getModsByPrice(amount);
@@ -108,7 +105,7 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
         const replies = [{ title: lang.getText('confirm_yes', userLang), payload: "confirm_yes" }, { title: lang.getText('confirm_no', userLang), payload: "confirm_no" }];
         await messengerApi.sendQuickReplies(sender_psid, confirmationMsg, replies);
         
-        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.email, lang: userLang });
+        stateManager.setUserState(sender_psid, 'awaiting_mod_confirmation', { refNumber, modId: mod.id, modName: mod.name, email: precollectedState?.data?.email, lang: userLang });
 
     } else if (matchingMods.length > 1) {
         let modList = '';
@@ -116,7 +113,7 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
         const clarificationMsg = lang.getText('receipt_clarify_purchase', userLang).replace('{amount}', amount).replace('{modList}', modList);
         await messengerApi.sendText(sender_psid, clarificationMsg);
         
-        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.email, lang: userLang });
+        stateManager.setUserState(sender_psid, 'awaiting_mod_clarification', { refNumber, email: precollectedState?.data?.email, lang: userLang });
 
     } else {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount));
@@ -125,7 +122,7 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
 }
 
 async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en') {
-    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
+    const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid).data;
     
     if (text.toLowerCase() === 'confirm_yes' || text.toLowerCase() === 'yes') {
         try {
@@ -154,12 +151,13 @@ async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en
     } else {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_transaction_cancelled', userLang));
     }
+    // --- FIX APPLIED HERE ---
     stateManager.clearUserState(sender_psid);
-    // REMOVED: stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'en') {
-    const { refNumber, email } = stateManager.getUserState(sender_psid);
+    const { refNumber, email } = stateManager.getUserState(sender_psid).data;
     const modId = parseInt(text.trim());
     try {
         const mod = await db.getModById(modId);
@@ -186,8 +184,9 @@ async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'e
             await messengerApi.sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
         } else { throw e; }
     }
+    // --- FIX APPLIED HERE ---
     stateManager.clearUserState(sender_psid);
-    // REMOVED: stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
+    stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
 module.exports = {
@@ -197,4 +196,4 @@ module.exports = {
     handleReceiptAnalysis,
     handleModConfirmation,
     handleModClarification,
-};
+}; 
