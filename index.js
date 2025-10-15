@@ -1,4 +1,4 @@
-// index.js (Final Corrected Version with All Fixes)
+// index.js (Corrected with Default English Delivery)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -15,6 +15,7 @@ const app = express();
 app.use(express.json());
 const { VERIFY_TOKEN, ADMIN_ID, WORKER_SECRET_TOKEN } = secrets;
 
+// --- CORRECTED WEBHOOK DELIVERY ENDPOINT ---
 app.post('/webhook-delivery', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -28,33 +29,48 @@ app.post('/webhook-delivery', async (req, res) => {
             console.error("Invalid delivery payload received:", req.body);
             return res.status(400).send('Bad Request: Missing required fields.');
         }
+
         const job = await dbManager.getJobById(job_id);
         if (!job) {
             console.error(`Delivery received for a non-existent Job ID: ${job_id}`);
             return res.status(404).send('Job Not Found');
         }
-        const userMessage = lang.getText('delivery_success', job.lang) + `\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
-        await sendText(job.user_psid, userMessage);
-        await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
-        console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
-        res.status(200).send('OK');
-    } catch (error) {
-        console.error("--- ERROR in /webhook-delivery ---", error);
+
+        // --- THIS IS THE FIX ---
+        // We now use the job's language, but if it's missing for any reason (it's null),
+        // we safely default to 'en'. This single change prevents the crash.
+        const deliveryLang = job.lang || 'en';
+        const userMessage = lang.getText('delivery_success', deliveryLang) + `\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
+        
         try {
-            const { job_id } = req.body;
-            if (job_id) {
-                const job = await dbManager.getJobById(job_id);
-                if (job) {
-                    await sendText(job.user_psid, lang.getText('delivery_failed_user', job.lang));
-                    await sendText(ADMIN_ID, `🚨 AUTOMATION DELIVERY FAILED! 🚨\nJob ID ${job_id} for user ${job.user_psid} could not be delivered after creation. Please intervene manually.`);
-                }
-            }
-        } catch (notificationError) {
-            console.error("--- FATAL ERROR in delivery error handler ---", notificationError);
+            await sendText(job.user_psid, userMessage);
+            await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
+            console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
+        
+        } catch (deliveryError) {
+            // This part handles cases where the user might have actually blocked the page.
+            console.error(`--- FAILED TO DELIVER MESSAGE for Job ID: ${job_id} to user ${job.user_psid} ---`);
+            console.error(deliveryError.message);
+            
+            const resultMsg = `Account created successfully, but delivery failed. User may have blocked the page. Credentials: ${username}:${password}`;
+            await dbManager.updateJobStatus(job_id, 'delivery_failed', resultMsg);
+
+            await sendText(ADMIN_ID, `🚨 DELIVERY FAILED! 🚨\nJob ID ${job_id} for user ${job.user_psid} was created but could not be delivered. The user may have blocked the page.\n\nAccount Details:\nUsername: ${username}\nPassword: ${password}`);
         }
+
+        // We ALWAYS send a 200 OK to the worker, because its job was successful.
+        res.status(200).send('OK');
+
+    } catch (error) {
+        console.error("--- CRITICAL ERROR in /webhook-delivery ---", error);
+        // This outer catch will now only trigger for very serious problems.
         res.status(500).send('Internal Server Error');
     }
 });
+
+
+// ... (The rest of your index.js file remains exactly the same) ...
+// The functions below do not need to be changed.
 
 async function handleError(error, sender_psid, context = 'Unknown') {
     console.error(`--- ERROR ---`);
