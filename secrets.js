@@ -2,7 +2,7 @@
 module.exports = {
     // IMPORTANT: Use the "Transaction Pooler" URL from Supabase.
     // It must end with port :6543
-    DATABASE_URL: "postgresql://postgres.vburnklpeuvxswtrugbp:abalunan1@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres",
+    DATABASE_URL: "postgresql://postgres.vburnklpeuvxswtrugbp:[YOUR-PASSWORD]@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres",
     // --- Other secrets ---
     PAGE_ACCESS_TOKEN: "EAA5a1El5oeIBPcqXg2AY2y0reyZAOnRj2GIveLqop4ibLMoTQZBNo7w2fkLaO6ZCvssgfhOsndEPiyZCv59SguqWt7bARCBtLBrZBB9Mbjkem5ZAtK06u9qTNv8Mj6z1fhZBMN3O7SWBwZACSEJjVTNCYxiat0tp7HChOPvrIhagCwX0j4faZBiZA3zthfrGd0C7iMRTMvQRoe1GAuSJJIWTwRkn9FdwZDZD",
     VERIFY_TOKEN: "pinkGuineaFowl_onpella_2025",
