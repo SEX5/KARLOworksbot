@@ -3,13 +3,12 @@
   "menu_option_1": "🔢 1️⃣  View available mods",
   "menu_option_2": "✅ 2️⃣  Check remaining replacement accounts",
   "menu_option_3": "🔁 3️⃣  Request a replacement account",
-  "menu_option_4": "💰 4️⃣  Custom Gold/Money",
+  "menu_option_4": "💰 4️⃣ Custom Gold/Money",
   "menu_option_5": "📩 5️⃣  Contact the admin",
   "menu_option_6": "🧾 6️⃣ View Proofs of Legitimacy",
   "menu_option_7": "🚨 7️⃣ Report an account issue",
-  "menu_option_8": "🔑 8️⃣ Create account with a Reference Number",
   "menu_suffix": "Just type the number of your choice! 😊",
-
+  
   "menu_option_1_button": "View Mods",
   "menu_option_2_button": "Check Claims",
   "menu_option_3_button": "Get Replacement",
@@ -17,11 +16,6 @@
   "menu_option_5_button": "Contact Admin",
   "menu_option_6_button": "View Proofs",
   "menu_option_7_button": "Report Issue",
-  "menu_option_8_button": "Use Reference No.",
-
-  "direct_purchase_prompt_ref": "🔑 Please enter the 13-digit GCash Reference Number for your payment.\n(This will be checked to ensure it has not been used before.)",
-  "direct_purchase_prompt_email": "✅ Reference number accepted!\nNow, please provide an email address that has NOT been used for a CarX Street account before.",
-  "direct_purchase_prompt_mod": "✅ Email accepted!\nFinally, which Mod did you purchase with this reference number? Please type the number of your choice.",
 
   "admin_online": "The admin is currently online! 🟢\n\nYou can message them directly for assistance at:\nhttps://www.facebook.com/share/19Z1AuEuGN/\n\nAlternatively, you can use the options below:",
   "admin_offline": "The admin is currently offline. 🔴\n\nYou can use the automated menu below for assistance.",
@@ -35,11 +29,11 @@
   "manual_entry_prompt_mod": "👉 Please reply with just the Mod number (example: 1 )\n(Type 'Menu' to return to the main menu.)",
   "manual_entry_invalid_mod": "❌ That's not a valid Mod number.\nPlease reply with one of the numbers from the list.\n(Type 'Menu' to return to the main menu.)",
   "manual_entry_success": "✅ Success! Your purchase of *Mod {modId}* has been registered!\nYou now have *{claimsText}* available. 🎁\nAn admin will verify your receipt shortly — thank you for your trust! 💙\n(Type 'Menu' to return to the main menu.)",
-
+  
   "mods_header": "🎮 *Available Mods* 🎮\nHere’s what you can get right now:",
   "mods_purchase_prompt": "💡 To purchase, Please reply with just the Mod number (example: 1)\n🔙 To return to the menu, type: Menu",
   "mods_none_available": "📭 There are currently no mods available.\nCheck back later or type Menu to return.",
-
+  
   "purchase_invalid_format": "❌ Invalid format. Please type the Number. Example: (1).\n(Type 'Menu' to return to the main menu.)",
   "purchase_invalid_mod": "❌ Invalid mod number. Please select a valid mod from the list.\n(Type 'Menu' to return to the main menu.)",
   "purchase_prompt_email": "✅ You selected Mod {modId}: {modName}!\n\nTo proceed, please provide an email address that has **NOT** been used for a CarX Street account before.\n\n(Type 'Menu' to return to the main menu.)",
@@ -66,9 +60,9 @@
   "claims_check_invalid_format": "❌ Invalid reference number format. Please enter 13 digits.\n(Type 'Menu' to return to the main menu.)",
   "claims_check_not_found": "🔍 No purchase found with that reference number. Please double-check.\n(Type 'Menu' to return to the main menu.)",
   "claims_check_result": "🎉 You have {claimsText} left for Mod {modId} ({modName}).\n(Type 'Menu' to return to the main menu.)",
-
+  
   "replace_prompt": "🔁 Ready for a replacement?\nPlease provide your 13-digit GCash reference number!! Remove any spaces before sending the reference number. Example 123456789123:\n(Type 'Menu' to return to the main menu.)",
-  "replace_no_claims": "❌ You have already used all of your available replacement accounts for this reference number.\n(Type 'Menu' to return to the main menu.)",
+  "replace_no_claims": "❌ No replacement accounts available for this reference number.\n(Type 'Menu' to return to the main menu.)",
   "replace_no_stock": "🛒 Sorry, no replacement accounts are in stock for your mod.\nAn admin will restock soon — please contact them for updates.\n(Type 'Menu' to return to the main menu.)",
   "replace_limit_reached": "❌ You have already requested a replacement in the last 24 hours. Please try again later.\n(Type 'Menu' to return to the main menu.)",
   "replace_success": "🎉 Here’s your replacement account!\n🎮 Mod: {modId}\n📧 Username: `{username}`\n🔐 Password: `{password}`\nEnjoy! And thank you for trusting us! 💙\n(Type 'Menu' to return to the main menu.)",
@@ -90,7 +84,7 @@
   "custom_mod_receipt_fail": "🔍 I couldn't clearly read the amount or a valid 13-digit reference number from that receipt. An admin has been notified and will assist you shortly! 🙏",
   "custom_mod_mismatch": "🤔 The amount on the receipt ({amount} PHP) doesn't match the expected price ({price} PHP). An admin has been notified to assist you. Please wait for them to reach out.",
   "custom_mod_success": "✅ Thank you! Your custom mod order has been received and sent to the admin for processing. We'll get back to you shortly! 💙\n(Type 'Menu' to return to the main menu.)",
-
+  
   "automation_started_user": "✅ Thank you! Your order for *{modName}* is confirmed.\n\n🤖 Our automated system has started creating your account. This usually takes 5-10 minutes. The login details will be sent here as soon as it's ready.\n\nThank you for your patience! 💙",
   "manual_creation_user": "✅ Thank you! Your order has been confirmed.\n\nAn admin will process it manually and send you the account details here shortly. Thank you for your patience! 🙏",
   "delivery_success": "🎉 Hooray! Your account has been created successfully!",
