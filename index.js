@@ -1,7 +1,7 @@
-// index.js (Final Corrected Version with All Fixes and New Feature)
+// index.js (Final Corrected Version with All Fixes)
 const express = require('express');
 const fs = require('fs');
-const path = path.join(__dirname, 'receipts');
+const path = require('path');
 const dbManager = require('./database.js');
 const stateManager = require('./state_manager.js');
 const userHandler = require('./user_handler');
@@ -106,7 +106,7 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         const currentStateAfterAnalysis = stateManager.getUserState(sender_psid);
         // Only proceed if the state is still 'processing_receipt'
         if (currentStateAfterAnalysis && currentStateAfterAnalysis.state === 'processing_receipt') {
-            if (currentStateAfterAnalysis.orderType) { // Check for custom mod
+            if (currentStateAfterAnalysis.data?.orderType) { // Check for custom mod
                 await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
             } else {
                 await userHandler.handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang);
@@ -147,7 +147,7 @@ async function handleMessage(sender_psid, webhook_event) {
         }
 
         if (isAdmin) {
-            // --- ADMIN LOGIC ---
+            // --- ADMIN LOGIC RESTORED ---
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
             if (lowerCaseText === 'menu') {
@@ -210,7 +210,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
             }
         } else {
-            // --- USER LOGIC ---
+            // --- USER LOGIC (WITH RACE CONDITION FIX) ---
             const isPaused = await dbManager.isUserPaused(sender_psid);
             if (isPaused) return;
 
@@ -238,7 +238,7 @@ async function handleMessage(sender_psid, webhook_event) {
 
             if (state === 'processing_receipt') {
                 await sendText(sender_psid, lang.getText('processing_receipt_wait', userLang));
-                return;
+                return; 
             }
 
             const expectingReceipt = state === 'awaiting_receipt_for_purchase' || state === 'awaiting_receipt_for_custom_mod';
@@ -246,8 +246,10 @@ async function handleMessage(sender_psid, webhook_event) {
             if (expectingReceipt && webhook_event.message?.attachments?.[0]?.type === 'image') {
                 if (!webhook_event.message?.sticker_id) {
                     const imageUrl = webhook_event.message.attachments[0].payload.url;
+
                     const currentState = stateManager.getUserState(sender_psid);
-                    stateManager.setUserState(sender_psid, 'processing_receipt', { ...(currentState || {}), lang: userLang });
+                    stateManager.setUserState(sender_psid, 'processing_receipt', { ...(currentState.data || {}), lang: userLang });
+                    
                     await handleReceiptSubmission(sender_psid, imageUrl);
                 }
                 return;
@@ -275,7 +277,7 @@ async function handleMessage(sender_psid, webhook_event) {
                     case 'awaiting_mod_confirmation': return userHandler.handleModConfirmation(sender_psid, lowerCaseText, ADMIN_ID, userLang);
                     case 'awaiting_mod_clarification': return userHandler.handleModClarification(sender_psid, received_text, ADMIN_ID, userLang);
                     case 'awaiting_manual_ref': return userHandler.handleManualReference(sender_psid, received_text, userLang);
-                    case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, sendImage, ADMIN_ID, userLang);
+                    case 'awaiting_manual_mod': return userHandler.handleManualModSelection(sender_psid, received_text, sendImage, ADMIN_ID, userLang);
                     case 'awaiting_ref_for_check': return userHandler.processCheckClaims(sender_psid, received_text, userLang);
                     case 'awaiting_ref_for_replacement': return userHandler.processReplacementRequest(sender_psid, received_text, userLang);
                     case 'awaiting_custom_mod_type': return userHandler.handleCustomModType(sender_psid, received_text, userLang);
@@ -283,10 +285,6 @@ async function handleMessage(sender_psid, webhook_event) {
                     case 'awaiting_admin_message': return userHandler.forwardMessageToAdmin(sender_psid, received_text, ADMIN_ID, userLang);
                     case 'awaiting_report_ref': return userHandler.processReportRef(sender_psid, received_text, userLang);
                     case 'awaiting_report_issue_desc': return userHandler.processReportDescription(sender_psid, received_text, ADMIN_ID, userLang);
-                    // --- NEW FEATURE STATES ---
-                    case 'awaiting_ref_for_direct_purchase': return userHandler.handleDirectPurchaseRef(sender_psid, received_text, userLang);
-                    case 'awaiting_email_for_direct_purchase': return userHandler.handleDirectPurchaseEmail(sender_psid, received_text, userLang);
-                    case 'awaiting_mod_for_direct_purchase': return userHandler.processDirectPurchase(sender_psid, received_text, ADMIN_ID, userLang);
                 }
             }
             switch (lowerCaseText) {
@@ -297,8 +295,6 @@ async function handleMessage(sender_psid, webhook_event) {
                 case '5': return userHandler.promptForAdminMessage(sender_psid, userLang);
                 case '6': return userHandler.handleViewProofs(sender_psid, userLang);
                 case '7': return userHandler.promptForReportRef(sender_psid, userLang);
-                // --- NEW FEATURE MENU OPTION ---
-                case '8': return userHandler.promptForDirectPurchaseRef(sender_psid, userLang);
                 default: return userHandler.showUserMenu(sender_psid, userLang);
             }
         }
@@ -311,31 +307,4 @@ async function startServer() {
     try {
         await dbManager.setupDatabase();
         app.get('/', (req, res) => { res.status(200).send('Bot is online and healthy.'); });
-        app.get('/webhook', (req, res) => {
-            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
-            if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-                console.log("Webhook verified successfully!");
-                res.status(200).send(challenge);
-            } else { res.sendStatus(403); }
-        });
-        app.post('/webhook', (req, res) => {
-            if (req.body.object === 'page') {
-                req.body.entry.forEach(entry => {
-                    const event = entry.messaging[0];
-                    if (event?.sender?.id && (event.message || event.postback)) {
-                        handleMessage(event.sender.id, event);
-                    }
-                });
-                res.status(200).send('EVENT_RECEIVED');
-            } else { res.sendStatus(404); }
-        });
-        const PORT = process.env.PORT || 3000;
-        const HOST = '0.0.0.0';
-        app.listen(PORT, HOST, () => { console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); });
-    } catch (error) {
-        console.error("Server failed to start:", error);
-        process.exit(1);
-    }
-}
-
-startServer();
+        app.get('/webhook', (req, 
