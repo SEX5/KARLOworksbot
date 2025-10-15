@@ -1,24 +1,40 @@
-// database.js (Complete, Final, and for use in BOTH projects)
+// database.js (Corrected with a Singleton Connection Pool)
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
-let pool;
+let pool; // This will hold our single, shared connection pool
 
+// --- THIS IS THE UPDATED SECTION ---
 function getDb() {
+    // This is the "Singleton" pattern. It ensures we only ever create ONE pool.
     if (!pool) {
         if (!secrets.DATABASE_URL) {
             console.error("FATAL ERROR: DATABASE_URL is not found in secrets.js!");
             process.exit(1);
         }
+        console.log("Creating a new PostgreSQL connection pool...");
         pool = new Pool({
             connectionString: secrets.DATABASE_URL,
             ssl: {
                 rejectUnauthorized: false
-            }
+            },
+            // --- POOLING CONFIGURATION ---
+            // These are good starting values for a bot on a free tier.
+            max: 10, // Max number of connections in the pool
+            idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
+            connectionTimeoutMillis: 20000, // How long to wait for a connection to be established
+        });
+
+        // Optional but recommended: Add an error listener to the pool
+        pool.on('error', (err, client) => {
+            console.error('Unexpected error on idle PostgreSQL client', err);
+            process.exit(-1); // Exit the process to allow for a clean restart
         });
     }
     return pool;
 }
+// --- END OF UPDATED SECTION ---
+
 
 async function setupDatabase() {
     const client = await getDb().connect();
