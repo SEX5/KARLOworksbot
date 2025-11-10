@@ -6,7 +6,7 @@ const secrets = require('./secrets.js');
 const KAIZ_API_KEY = secrets.KAIZ_API_KEY;
 const GEMINI_API_KEY = secrets.GEMINI_API_KEY;
 
-const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
+const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=";
 
 const GEMINI_ANALYSIS_PROMPT = `
 You are a highly-attentive payment verification assistant. Your task is to analyze payment receipt screenshots to check for legitimacy.
