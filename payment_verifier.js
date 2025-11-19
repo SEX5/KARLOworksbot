@@ -1,9 +1,9 @@
-// payment_verifier.js (Fully Corrected Version with q= parameter first)
+// payment_verifier.js (Fully Corrected Version with Rapido API)
 const axios = require('axios');
 const sharp = require('sharp');
 const secrets = require('./secrets.js');
 
-const KAIZ_API_KEY = secrets.KAIZ_API_KEY;
+// KAIZ_API_KEY is no longer needed for the new API
 const GEMINI_API_KEY = secrets.GEMINI_API_KEY;
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=";
@@ -26,7 +26,7 @@ Respond in this exact JSON format. Do not include any other text, comments, or m
 }
 `;
 
-const KAIZ_ANALYSIS_PROMPT = `
+const RAPIDO_ANALYSIS_PROMPT = `
 CRITICAL INSTRUCTION: Analyze the provided GCash receipt. YOU MUST ONLY reply with a valid JSON object in the specified format. Do not add any introductory text, markdown, or explanations. Your entire response must be the JSON object itself.
 
 {
@@ -94,21 +94,20 @@ function createErrorJson(reason) {
 }
 
 
-async function sendKaizRequest(imageUrl) {
-    console.log("Attempting analysis with Primary API (Kaiz-APIs)...");
-    const encodedPrompt = encodeURIComponent(KAIZ_ANALYSIS_PROMPT);
+async function sendRapidoRequest(imageUrl) {
+    console.log("Attempting analysis with Primary API (Rapido)...");
+    const encodedPrompt = encodeURIComponent(RAPIDO_ANALYSIS_PROMPT);
     const encodedImageUrl = encodeURIComponent(imageUrl);
     
-    // --- EDITED THIS LINE AS REQUESTED ---
-    const KAIZ_API_URL = `https://kaiz-apis.gleeze.com/api/gemini-vision?q=${encodedPrompt}&uid=3&imageUrl=${encodedImageUrl}&apikey=${KAIZ_API_KEY}`;
+    const RAPIDO_API_URL = `https://rapido.zetsu.xyz/api/gemini?chat=${encodedPrompt}&imageUrl=${encodedImageUrl}`;
 
     try {
-        const response = await axios.get(KAIZ_API_URL, { timeout: 45000 });
+        const response = await axios.get(RAPIDO_API_URL, { timeout: 45000 });
 
-        console.log(`[KAIZ API] Raw response received:`, response.data);
+        console.log(`[Rapido API] Raw response received:`, response.data);
 
         if (!response.data || !response.data.response) {
-            throw new Error(`Kaiz-API responded with an error: ${response.data.error || 'No response data'}`);
+            throw new Error(`Rapido-API responded with an error: ${response.data.error || 'No response data'}`);
         }
 
         const rawText = response.data.response;
@@ -116,24 +115,24 @@ async function sendKaizRequest(imageUrl) {
         if (jsonMatch && jsonMatch[0]) {
             const parsedJson = JSON.parse(jsonMatch[0]);
             if (parsedJson.verification_status && parsedJson.extracted_info) {
-                console.log("Primary API (Kaiz-APIs) analysis successful.");
+                console.log("Primary API (Rapido) analysis successful.");
                 return parsedJson;
             }
         }
-        throw new Error("Response from Kaiz-APIs did not contain a valid JSON object.");
+        throw new Error("Response from Rapido-API did not contain a valid JSON object.");
 
     } catch (error) {
-        console.error("Primary API (Kaiz-APIs) request failed:", error.message);
+        console.error("Primary API (Rapido) request failed:", error.message);
         throw error; // Propagate the error to trigger the fallback
     }
 }
 
 async function analyzeReceiptWithFallback(imageUrl, image_b64) {
     try {
-        const primaryResult = await sendKaizRequest(imageUrl);
+        const primaryResult = await sendRapidoRequest(imageUrl);
         return primaryResult;
     } catch (primaryError) {
-        console.warn("Primary API (Kaiz-APIs) failed. Proceeding to Fallback API (Gemini)...");
+        console.warn("Primary API (Rapido) failed. Proceeding to Fallback API (Gemini)...");
         try {
             const fallbackResult = await sendGeminiRequest(image_b64);
             return fallbackResult;
