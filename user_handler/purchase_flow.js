@@ -1,4 +1,4 @@
-// user_handler/purchase_flow.js (Corrected: robust User Profile fetching)
+// user_handler/purchase_flow.js (Corrected: robust User Profile and Email handling)
 const db = require('../database');
 const stateManager = require('../state_manager');
 const messengerApi = require('../messenger_api');
@@ -131,7 +131,7 @@ async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en
             await db.addReference(refNumber, sender_psid, modId);
             
             const password = generatePassword();
-            // Ensure email is not undefined to prevent DB errors
+            // FIX: Ensure email is not undefined to prevent DB errors
             const safeEmail = email || "No Email Provided"; 
 
             const jobId = await db.createAccountCreationJob(sender_psid, safeEmail, password, modId, userLang);
@@ -153,7 +153,7 @@ async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en
             } else { 
                 console.error("Error in mod confirmation:", e);
                 await messengerApi.sendText(sender_psid, lang.getText('error_unexpected_user', userLang));
-                // Notify admin of the specific error so you can debug
+                // Notify admin of the specific error
                 await messengerApi.sendText(ADMIN_ID, `⚠️ SYSTEM ERROR for User ${sender_psid}: ${e.message}`);
             }
             stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
