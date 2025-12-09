@@ -1,4 +1,4 @@
-// payment_verifier.js (Fully Corrected Version with Rapido API)
+// payment_verifier.js (Updated with Norch Project API)
 const axios = require('axios');
 const sharp = require('sharp');
 const secrets = require('./secrets.js');
@@ -26,7 +26,7 @@ Respond in this exact JSON format. Do not include any other text, comments, or m
 }
 `;
 
-const RAPIDO_ANALYSIS_PROMPT = `
+const PRIMARY_ANALYSIS_PROMPT = `
 CRITICAL INSTRUCTION: Analyze the provided GCash receipt. YOU MUST ONLY reply with a valid JSON object in the specified format. Do not add any introductory text, markdown, or explanations. Your entire response must be the JSON object itself.
 
 {
@@ -56,6 +56,7 @@ async function encodeImage(imageBuffer) {
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// --- Fallback (Google Gemini Direct) ---
 async function sendGeminiRequest(image_b64) {
     const payload = {
         "contents": [{
@@ -93,47 +94,57 @@ function createErrorJson(reason) {
     };
 }
 
-
-async function sendRapidoRequest(imageUrl) {
-    console.log("Attempting analysis with Primary API (Rapido)...");
-    const encodedPrompt = encodeURIComponent(RAPIDO_ANALYSIS_PROMPT);
+// --- Primary API (Norch Project) ---
+async function sendNorchRequest(imageUrl) {
+    console.log("Attempting analysis with Primary API (Norch)...");
+    
+    // Updated parameter names: prompt and imageurl
+    const encodedPrompt = encodeURIComponent(PRIMARY_ANALYSIS_PROMPT);
     const encodedImageUrl = encodeURIComponent(imageUrl);
     
-    const RAPIDO_API_URL = `https://rapido.zetsu.xyz/api/gemini?chat=${encodedPrompt}&imageUrl=${encodedImageUrl}`;
+    // New API Endpoint
+    const API_URL = `https://norch-project.gleeze.com/api/gemini?prompt=${encodedPrompt}&imageurl=${encodedImageUrl}`;
 
     try {
-        const response = await axios.get(RAPIDO_API_URL, { timeout: 45000 });
+        const response = await axios.get(API_URL, { timeout: 45000 });
 
-        console.log(`[Rapido API] Raw response received:`, response.data);
+        console.log(`[Norch API] Raw response received.`);
 
+        // Based on the screenshot, the actual text response is inside response.data.response
         if (!response.data || !response.data.response) {
-            throw new Error(`Rapido-API responded with an error: ${response.data.error || 'No response data'}`);
+            throw new Error(`Norch-API responded with an error or invalid format: ${JSON.stringify(response.data)}`);
         }
 
         const rawText = response.data.response;
+        
+        // Find JSON object within the text response using Regex
         const jsonMatch = rawText.match(/({[\s\S]*})/);
         if (jsonMatch && jsonMatch[0]) {
             const parsedJson = JSON.parse(jsonMatch[0]);
             if (parsedJson.verification_status && parsedJson.extracted_info) {
-                console.log("Primary API (Rapido) analysis successful.");
+                console.log("Primary API (Norch) analysis successful.");
                 return parsedJson;
             }
         }
-        throw new Error("Response from Rapido-API did not contain a valid JSON object.");
+        
+        console.error("Raw text from Norch:", rawText);
+        throw new Error("Response from Norch-API did not contain a valid JSON object.");
 
     } catch (error) {
-        console.error("Primary API (Rapido) request failed:", error.message);
+        console.error("Primary API (Norch) request failed:", error.message);
         throw error; // Propagate the error to trigger the fallback
     }
 }
 
 async function analyzeReceiptWithFallback(imageUrl, image_b64) {
     try {
-        const primaryResult = await sendRapidoRequest(imageUrl);
+        // Try Norch (Primary)
+        const primaryResult = await sendNorchRequest(imageUrl);
         return primaryResult;
     } catch (primaryError) {
-        console.warn("Primary API (Rapido) failed. Proceeding to Fallback API (Gemini)...");
+        console.warn("Primary API (Norch) failed. Proceeding to Fallback API (Gemini)...");
         try {
+            // Try Google Gemini (Fallback)
             const fallbackResult = await sendGeminiRequest(image_b64);
             return fallbackResult;
         } catch (fallbackError) {
