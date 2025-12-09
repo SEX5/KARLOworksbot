@@ -98,7 +98,7 @@ function createErrorJson(reason) {
 async function sendNorchRequest(imageUrl) {
     console.log("Attempting analysis with Primary API (Norch)...");
     
-    // Updated parameter names: prompt and imageurl
+    // Updated parameter names based on your cURL example: prompt and imageurl
     const encodedPrompt = encodeURIComponent(PRIMARY_ANALYSIS_PROMPT);
     const encodedImageUrl = encodeURIComponent(imageUrl);
     
@@ -110,9 +110,8 @@ async function sendNorchRequest(imageUrl) {
 
         console.log(`[Norch API] Raw response received.`);
 
-        // Based on the screenshot, the actual text response is inside response.data.response
         if (!response.data || !response.data.response) {
-            throw new Error(`Norch-API responded with an error or invalid format: ${JSON.stringify(response.data)}`);
+            throw new Error(`Norch-API responded with an error or invalid format.`);
         }
 
         const rawText = response.data.response;
