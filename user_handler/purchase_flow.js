@@ -1,4 +1,4 @@
-// user_handler/purchase_flow.js (Corrected with proper state clearing)
+// user_handler/purchase_flow.js (Corrected: robust User Profile fetching)
 const db = require('../database');
 const stateManager = require('../state_manager');
 const messengerApi = require('../messenger_api');
@@ -13,7 +13,7 @@ function generatePassword(length = 10) {
     return retVal;
 }
 
-// ... (handleViewMods, handleWantMod, handleEmailForPurchase, handleReceiptAnalysis functions are all correct and unchanged) ...
+// ... (handleViewMods, handleWantMod, handleEmailForPurchase are unchanged) ...
 async function handleViewMods(sender_psid, userLang = 'en') {
     const mods = await db.getMods();
     if (!mods || mods.length === 0) {
@@ -33,6 +33,7 @@ async function handleViewMods(sender_psid, userLang = 'en') {
     await messengerApi.sendQuickReplies(sender_psid, finalMessage, replies);
     stateManager.setUserState(sender_psid, 'awaiting_want_mod', { lang: userLang });
 }
+
 async function handleWantMod(sender_psid, text, userLang = 'en') {
     const modId = parseInt(text.trim());
     const replies = [{ title: "⬅️ Back to Menu", payload: "menu" }];
@@ -49,6 +50,7 @@ async function handleWantMod(sender_psid, text, userLang = 'en') {
     await messengerApi.sendQuickReplies(sender_psid, promptEmailMsg, replies);
     stateManager.setUserState(sender_psid, 'awaiting_email_for_purchase', { modId: mod.id, lang: userLang });
 }
+
 async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
     const { modId } = stateManager.getUserState(sender_psid); 
     const email = text.trim();
@@ -64,23 +66,25 @@ async function handleEmailForPurchase(sender_psid, text, userLang = 'en') {
     await messengerApi.sendQuickReplies(sender_psid, paymentMessage, replies);
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_purchase', { modId, email, lang: userLang });
 }
+
 async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang = 'en') {
     const precollectedState = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
     const amount = parseFloat(amountStr);
     const refNumber = (analysis.extracted_info?.reference_number || '').replace(/\s/g, '');
     
+    // SAFE User Profile Fetching
     let userName = 'A User';
     try {
         userName = await messengerApi.getUserProfile(sender_psid);
     } catch (e) {
-        console.error("Failed to fetch user profile, using default name.", e);
+        console.error("Failed to fetch user profile in analysis:", e.message);
     }
 
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_fail_read', userLang));
         await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt, but AI failed to extract valid info. Amount: ${amountStr}, Ref: ${refNumber}.`);
-        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang }); // Reset state on failure
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang }); 
         return;
     }
 
@@ -105,49 +109,62 @@ async function handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang =
     } else {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_no_match', userLang).replace('{amount}', amount));
         await messengerApi.sendText(ADMIN_ID, `User ${userName} sent a receipt for ${amount} PHP with ref ${refNumber}, but no mod matches this price.`);
-        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang }); // Reset state
+        stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
     }
 }
 
-
-// --- THIS IS THE CORRECTED FUNCTION ---
+// --- FIXED: Added error handling for getUserProfile and Email ---
 async function handleModConfirmation(sender_psid, text, ADMIN_ID, userLang = 'en') {
     const { refNumber, modId, modName, email } = stateManager.getUserState(sender_psid);
     const positiveConfirmation = lang.getText('confirm_yes', userLang).toLowerCase();
     
     if (text.toLowerCase() === 'confirm_yes' || text.toLowerCase() === 'yes' || text.toLowerCase() === positiveConfirmation) {
         try {
-            const userName = await messengerApi.getUserProfile(sender_psid);
+            // FIX: Safely fetch user name, default if fails
+            let userName = 'A User';
+            try {
+                userName = await messengerApi.getUserProfile(sender_psid);
+            } catch (pErr) {
+                console.warn(`Could not fetch profile for ${sender_psid}: ${pErr.message}`);
+            }
+
             await db.addReference(refNumber, sender_psid, modId);
+            
             const password = generatePassword();
-            const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId, userLang);
+            // Ensure email is not undefined to prevent DB errors
+            const safeEmail = email || "No Email Provided"; 
+
+            const jobId = await db.createAccountCreationJob(sender_psid, safeEmail, password, modId, userLang);
             const confirmationMessage = lang.getText('automation_started_user', userLang).replace('{modName}', modName);
             await messengerApi.sendText(sender_psid, confirmationMessage);
+            
             await messengerApi.sendText(ADMIN_ID, `🤖 Automation job (ID: ${jobId}) has been queued for ${userName} (Mod: ${modName}, Ref: ${refNumber})`);
             
-            // --- FIX APPLIED HERE: State is cleared only on success ---
             stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 
         } catch (e) {
             if (e.message === 'Duplicate reference number') {
-                const userName = await messengerApi.getUserProfile(sender_psid);
+                // Fetch profile again safely for the error report
+                let userName = 'A User'; 
+                try { userName = await messengerApi.getUserProfile(sender_psid); } catch(err){}
+
                 await messengerApi.sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
                 await messengerApi.sendText(ADMIN_ID, `⚠️ User ${userName} tried to submit a DUPLICATE reference: ${refNumber}`);
             } else { 
                 console.error("Error in mod confirmation:", e);
                 await messengerApi.sendText(sender_psid, lang.getText('error_unexpected_user', userLang));
+                // Notify admin of the specific error so you can debug
+                await messengerApi.sendText(ADMIN_ID, `⚠️ SYSTEM ERROR for User ${sender_psid}: ${e.message}`);
             }
-            // --- FIX APPLIED HERE: State is also cleared on error ---
             stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
         }
     } else {
         await messengerApi.sendText(sender_psid, lang.getText('receipt_transaction_cancelled', userLang));
-        // --- FIX APPLIED HERE: State is also cleared on cancellation ---
         stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
     }
 }
 
-// --- THIS FUNCTION IS ALSO CORRECTED ---
+// --- FIXED: Applied same fixes to Clarification flow ---
 async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'en') {
     const { refNumber, email } = stateManager.getUserState(sender_psid);
     const modId = parseInt(text.trim());
@@ -155,17 +172,28 @@ async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'e
         const mod = await db.getModById(modId);
         if (isNaN(modId) || !mod) {
             await messengerApi.sendText(sender_psid, lang.getText('manual_entry_invalid_mod', userLang));
-            return; // Return early to keep the user in the same state to try again
+            return; 
         }
-        const userName = await messengerApi.getUserProfile(sender_psid);
+
+        // FIX: Safely fetch user name
+        let userName = 'A User';
+        try {
+            userName = await messengerApi.getUserProfile(sender_psid);
+        } catch (pErr) {
+            console.warn(`Could not fetch profile for ${sender_psid}: ${pErr.message}`);
+        }
+
         await db.addReference(refNumber, sender_psid, modId);
+        
         const password = generatePassword();
-        const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId, userLang);
+        const safeEmail = email || "No Email Provided";
+
+        const jobId = await db.createAccountCreationJob(sender_psid, safeEmail, password, modId, userLang);
         const confirmationMessage = lang.getText('automation_started_user', userLang).replace('{modName}', mod.name);
         await messengerApi.sendText(sender_psid, confirmationMessage);
+        
         await messengerApi.sendText(ADMIN_ID, `🤖 Automation job (ID: ${jobId}) has been queued for ${userName} (Mod: ${mod.name}, Ref: ${refNumber})`);
         
-        // --- FIX APPLIED HERE: State is cleared only on success ---
         stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 
     } catch (e) {
@@ -174,12 +202,11 @@ async function handleModClarification(sender_psid, text, ADMIN_ID, userLang = 'e
         } else { 
             console.error("Error in mod clarification:", e);
             await messengerApi.sendText(sender_psid, lang.getText('error_unexpected_user', userLang));
+            await messengerApi.sendText(ADMIN_ID, `⚠️ SYSTEM ERROR for User ${sender_psid}: ${e.message}`);
         }
-        // --- FIX APPLIED HERE: State is also cleared on error ---
         stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
     }
 }
-
 
 module.exports = {
     handleViewMods,
