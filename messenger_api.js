@@ -2,15 +2,25 @@
 const axios = require('axios');
 const secrets = require('./secrets.js');
 
-const { PAGE_ACCESS_TOKEN } = secrets;
+const { PAGE_ACCESS_TOKEN, ADMIN_ID } = secrets;
+
+// Helper to pause execution (for retries)
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Generic helper for API requests with basic error logging
+async function callSendAPI(messageData) {
+    try {
+        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+        return true; // Success
+    } catch (error) {
+        console.error("Facebook API Error:", error.response?.data || error.message);
+        return false; // Failed
+    }
+}
 
 async function sendText(psid, text) {
     const messageData = { recipient: { id: psid }, message: { text: text }, messaging_type: "RESPONSE" };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending text message:", error.response?.data || error.message);
-    }
+    return await callSendAPI(messageData);
 }
 
 async function sendQuickReplies(psid, text, replies) {
@@ -26,11 +36,7 @@ async function sendQuickReplies(psid, text, replies) {
             }))
         }
     };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
-    } catch (error) {
-        console.error("Error sending quick replies:", error.response?.data || error.message);
-    }
+    return await callSendAPI(messageData);
 }
 
 async function sendImage(psid, imageUrl) {
@@ -39,12 +45,24 @@ async function sendImage(psid, imageUrl) {
         message: { attachment: { type: "image", payload: { url: imageUrl, is_reusable: false } } },
         messaging_type: "RESPONSE"
     };
-    try {
-        await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+    return await callSendAPI(messageData);
+}
+
+// --- NEW: ROBUST ADMIN NOTIFICATION SYSTEM ---
+// Tries to send a message to the admin up to 3 times if it fails.
+async function notifyAdmin(text) {
+    const messageData = { recipient: { id: ADMIN_ID }, message: { text: text }, messaging_type: "RESPONSE" };
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, messageData);
+            return; // Sent successfully, exit function
+        } catch (error) {
+            console.error(`[Admin Alert Failed] Attempt ${attempt}/3:`, error.message);
+            if (attempt < 3) await sleep(1500); // Wait 1.5 seconds before retrying
+        }
     }
-    catch (error) {
-        console.error("Error sending image message:", error.response?.data || error.message);
-    }
+    console.error("CRITICAL: Could not send message to Admin after 3 attempts.");
 }
 
 const userProfileCache = new Map();
@@ -61,8 +79,8 @@ async function getUserProfile(psid) {
             return fullName;
         }
     } catch (error) {
-        console.error(`Failed to fetch user profile for ${psid}:`, error.response?.data || error.message);
-        return psid;
+        console.error(`Failed to fetch user profile for ${psid}:`, error.message);
+        return "User";
     }
     return psid;
 }
@@ -71,5 +89,6 @@ module.exports = {
     sendText,
     sendImage,
     getUserProfile,
-    sendQuickReplies
-}; 
+    sendQuickReplies,
+    notifyAdmin // Export the new function
+};
