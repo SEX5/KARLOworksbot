@@ -11,7 +11,6 @@ async function handleViewProofs(sender_psid, userLang = 'en') {
     await messengerApi.sendQuickReplies(sender_psid, proofMessage, replies);
 }
 
-
 // --- Admin Contact ---
 async function promptForAdminMessage(sender_psid, userLang = 'en') {
     const replies = [{ title: "⬅️ Back to Menu", payload: "menu" }];
@@ -21,13 +20,14 @@ async function promptForAdminMessage(sender_psid, userLang = 'en') {
 
 async function forwardMessageToAdmin(sender_psid, text, ADMIN_ID, userLang = 'en') {
     const userName = await messengerApi.getUserProfile(sender_psid);
-    const forwardMessage = `📩 Message from ${userName} (${sender_psid}):\n\n"${text}"\n\nTo reply, use the admin menu.`;
-    await messengerApi.sendText(ADMIN_ID, forwardMessage);
+    
+    // Use notifyAdmin for RELIABLE SUPPORT MESSAGES
+    await messengerApi.notifyAdmin(`📩 Message from ${userName}\nID: ${sender_psid}\n\n"${text}"\n\nTo reply, use the admin menu.`);
+    
     await messengerApi.sendText(sender_psid, lang.getText('contact_admin_success', userLang));
     stateManager.clearUserState(sender_psid);
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
-
 
 // --- Report Issue Feature ---
 async function promptForReportRef(sender_psid, userLang = 'en') {
@@ -57,14 +57,13 @@ async function processReportDescription(sender_psid, text, ADMIN_ID, userLang = 
     const issueDescription = text.trim();
     const userName = await messengerApi.getUserProfile(sender_psid);
     
-    const adminNotification = `🚨 NEW ACCOUNT ISSUE REPORT 🚨\n\nUser: ${userName} (${sender_psid})\nReference: ${refNumber}\n\nIssue:\n"${issueDescription}"`;
-    await messengerApi.sendText(ADMIN_ID, adminNotification);
+    // Use notifyAdmin for RELIABLE REPORTS
+    await messengerApi.notifyAdmin(`🚨 NEW ACCOUNT ISSUE REPORT 🚨\n\nUser: ${userName}\nID: ${sender_psid}\nReference: ${refNumber}\n\nIssue:\n"${issueDescription}"`);
     
     await messengerApi.sendText(sender_psid, lang.getText('report_success_user', userLang));
     stateManager.clearUserState(sender_psid);
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
-
 
 module.exports = {
     handleViewProofs,
