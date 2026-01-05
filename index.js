@@ -330,34 +330,23 @@ async function handleMessage(sender_psid, webhook_event) {
 }
 
 async function startServer() {
+    // 1. Start the server IMMEDIATELY so Render marks deploy as "Live"
+    const PORT = process.env.PORT || 3000;
+    const HOST = '0.0.0.0';
+    
+    app.listen(PORT, HOST, () => { 
+        console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); 
+    });
+
+    // 2. Connect to the Database in the background
     try {
+        console.log("Attempting to connect to database...");
         await dbManager.setupDatabase();
-        app.get('/', (req, res) => { res.status(200).send('Bot is online and healthy.'); });
-        app.get('/webhook', (req, res) => {
-            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
-            if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-                console.log("Webhook verified successfully!");
-                res.status(200).send(challenge);
-            } else { res.sendStatus(403); }
-        });
-        app.post('/webhook', (req, res) => {
-            if (req.body.object === 'page') {
-                req.body.entry.forEach(entry => {
-                    const event = entry.messaging[0];
-                    if (event?.sender?.id && (event.message || event.postback)) {
-                        handleMessage(event.sender.id, event);
-                    }
-                });
-                res.status(200).send('EVENT_RECEIVED');
-            } else { res.sendStatus(404); }
-        });
-        const PORT = process.env.PORT || 3000;
-        const HOST = '0.0.0.0';
-        app.listen(PORT, HOST, () => { console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); });
+        console.log("✅ Database connected successfully.");
     } catch (error) {
-        console.error("Server failed to start:", error);
-        process.exit(1);
+        console.error("❌ Database connection failed:", error);
+        // (Optional) You could notifyAdmin here if the DB fails
     }
 }
 
-startServer(); 
+startServer();
