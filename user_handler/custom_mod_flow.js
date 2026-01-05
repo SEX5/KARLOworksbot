@@ -4,7 +4,6 @@ const stateManager = require('../state_manager');
 const messengerApi = require('../messenger_api');
 const lang = require('../language_manager');
 
-// Step 1: Ask user to choose between Money or Gold
 async function promptForCustomMod(sender_psid, userLang = 'en') {
     const message = lang.getText('custom_mod_prompt_choice', userLang);
     const replies = [
@@ -16,7 +15,6 @@ async function promptForCustomMod(sender_psid, userLang = 'en') {
     stateManager.setUserState(sender_psid, 'awaiting_custom_mod_type', { lang: userLang });
 }
 
-// Step 2: User has chosen a type, now prompt for the amount
 async function handleCustomModType(sender_psid, payload, userLang = 'en') {
     let prompt = '';
     const orderType = payload === 'custom_money' ? 'Money' : 'Gold';
@@ -32,7 +30,6 @@ async function handleCustomModType(sender_psid, payload, userLang = 'en') {
     stateManager.setUserState(sender_psid, 'awaiting_custom_mod_amount', { orderType, lang: userLang });
 }
 
-// Step 3: User has entered an amount, validate it and ask for payment
 async function handleCustomModAmount(sender_psid, text, userLang = 'en') {
     const { orderType } = stateManager.getUserState(sender_psid);
     const orderAmount = text.trim();
@@ -75,7 +72,6 @@ async function handleCustomModAmount(sender_psid, text, userLang = 'en') {
     stateManager.setUserState(sender_psid, 'awaiting_receipt_for_custom_mod', { orderType, orderAmount, price, lang: userLang });
 }
 
-// Step 4: Handle the receipt for the custom mod
 async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang = 'en') {
     const { orderType, orderAmount, price } = stateManager.getUserState(sender_psid);
     const amountStr = (analysis.extracted_info?.amount || '').replace(/[^0-9.]/g, '');
@@ -85,29 +81,33 @@ async function handleCustomModReceipt(sender_psid, analysis, sendText, sendImage
     
     if (isNaN(amount) || !refNumber || !/^\d{13}$/.test(refNumber)) {
         await sendText(sender_psid, lang.getText('custom_mod_receipt_fail', userLang));
-        const adminNotification = `⚠️ CUSTOM MOD - AI FAILURE ⚠️\nUser: ${userName}\nOrder: ${orderAmount} ${orderType}\nAI could not read the receipt. Please check manually.`;
-        await sendText(ADMIN_ID, adminNotification);
+        
+        // Use notifyAdmin
+        await messengerApi.notifyAdmin(`⚠️ CUSTOM MOD - AI FAILURE ⚠️\nUser: ${userName}\nID: ${sender_psid}\nOrder: ${orderAmount} ${orderType}\nAI could not read the receipt. Check manually.`);
         await sendImage(ADMIN_ID, imageUrl);
+
     } else if (Math.abs(amount - price) > 0.01) {
         const mismatchMsg = lang.getText('custom_mod_mismatch', userLang).replace('{amount}', amount).replace('{price}', price);
         await sendText(sender_psid, mismatchMsg);
-        const adminNotification = `⚠️ CUSTOM MOD - PRICE MISMATCH ⚠️\nUser: ${userName}\nOrder: ${orderAmount} ${orderType}\nExpected: ${price} PHP\nPaid: ${amount} PHP\nRef: ${refNumber}`;
-        await sendText(ADMIN_ID, adminNotification);
+        
+        // Use notifyAdmin
+        await messengerApi.notifyAdmin(`⚠️ CUSTOM MOD - PRICE MISMATCH ⚠️\nUser: ${userName}\nID: ${sender_psid}\nOrder: ${orderAmount} ${orderType}\nExpected: ${price} PHP\nPaid: ${amount} PHP\nRef: ${refNumber}`);
         await sendImage(ADMIN_ID, imageUrl);
+
     } else {
         await sendText(sender_psid, lang.getText('custom_mod_success', userLang));
-        const adminNotification = `✅ New Custom Mod Order!\nUser: ${userName} (${sender_psid})\nOrder: *${orderAmount} of ${orderType}*\nPrice: ${price} PHP\nRef No: ${refNumber}`;
-        await sendText(ADMIN_ID, adminNotification);
+        
+        // Use notifyAdmin
+        await messengerApi.notifyAdmin(`✅ New Custom Mod Order!\nUser: ${userName}\nID: ${sender_psid}\nOrder: *${orderAmount} of ${orderType}*\nPrice: ${price} PHP\nRef No: ${refNumber}`);
         await sendImage(ADMIN_ID, imageUrl);
     }
     stateManager.clearUserState(sender_psid);
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
-
 module.exports = {
     promptForCustomMod,
     handleCustomModType,
     handleCustomModAmount,
     handleCustomModReceipt
-};
+}; 
