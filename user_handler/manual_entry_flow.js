@@ -44,10 +44,15 @@ async function handleManualModSelection(sender_psid, text, sendImage, ADMIN_ID, 
         const claimsAdded = await db.addReference(refNumber, sender_psid, modId);
         const claimsText = claimsAdded === 1 ? '1 replacement claim' : `${claimsAdded} replacement claims`;
         await messengerApi.sendText(sender_psid, lang.getText('manual_entry_success', userLang).replace('{modId}', mod.id).replace('{claimsText}', claimsText));
+        
         const userName = await messengerApi.getUserProfile(sender_psid);
-        const adminNotification = `⚠️ MANUAL REGISTRATION (AI FAILED) ⚠️\nUser: ${userName}\nRef No: ${refNumber}\nMod: ${mod.name}\nReceipt attached.`;
+        
+        // --- UPDATED NOTIFICATION: Added ID ---
+        const adminNotification = `⚠️ MANUAL REGISTRATION (AI FAILED) ⚠️\nUser: ${userName}\nID: ${sender_psid}\nRef No: ${refNumber}\nMod: ${mod.name}\nReceipt attached.`;
+        
         await messengerApi.sendText(ADMIN_ID, adminNotification);
         await sendImage(ADMIN_ID, imageUrl);
+
     } catch (e) {
         if (e.message === 'Duplicate reference number') {
             await messengerApi.sendText(sender_psid, lang.getText('error_duplicate_ref', userLang));
@@ -58,7 +63,6 @@ async function handleManualModSelection(sender_psid, text, sendImage, ADMIN_ID, 
     stateManager.clearUserState(sender_psid);
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
-
 
 module.exports = {
     startManualEntryFlow,
