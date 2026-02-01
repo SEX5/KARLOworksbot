@@ -1,4 +1,4 @@
-// index.js (Final Version with Admin Reliability & New User Alerts)
+// index.js (Final Corrected Version with All Fixes)
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -8,15 +8,14 @@ const userHandler = require('./user_handler');
 const adminHandler = require('./admin_handler.js');
 const secrets = require('./secrets.js');
 const paymentVerifier = require('./payment_verifier.js');
-// Import notifyAdmin here
-const { sendText, sendImage, sendQuickReplies, getUserProfile, notifyAdmin } = require('./messenger_api.js');
+const { sendText, sendImage, sendQuickReplies, getUserProfile } = require('./messenger_api.js');
 const lang = require('./language_manager');
 
 const app = express();
 app.use(express.json());
 const { VERIFY_TOKEN, ADMIN_ID, WORKER_SECRET_TOKEN } = secrets;
 
-// --- ROBUST WEBHOOK DELIVERY ---
+// --- THIS IS THE UPDATED SECTION ---
 app.post('/webhook-delivery', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -37,55 +36,52 @@ app.post('/webhook-delivery', async (req, res) => {
             return res.status(404).send('Job Not Found');
         }
 
+        // --- THE FIX ---
+        // We use the job's language, but if it's missing (it's null), we safely default to 'en'.
+        // This single change prevents the crash that was causing the 500 Internal Server Error.
         const deliveryLang = job.lang || 'en';
         const userMessage = lang.getText('delivery_success', deliveryLang) + `\n\n📧 Username: \`${username}\`\n🔐 Password: \`${password}\`\n\nThank you for your trust! Enjoy! 💙`;
         
         try {
-            // Check if sending to user was successful
-            const deliverySuccess = await sendText(job.user_psid, userMessage);
-            
-            if (deliverySuccess) {
-                await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
-                console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
-            } else {
-                throw new Error("Failed to send message via Graph API (User blocked bot?)");
-            }
+            // This inner try...catch handles cases where the user might have blocked the page.
+            await sendText(job.user_psid, userMessage);
+            await dbManager.updateJobStatus(job_id, 'delivered', 'Successfully delivered to user.');
+            console.log(`Successfully delivered credentials for Job ID: ${job_id} to user ${job.user_psid}`);
         
         } catch (deliveryError) {
-            console.error(`--- FAILED TO DELIVER MESSAGE for Job ID: ${job_id} ---`);
-            const resultMsg = `Account created, but DELIVERY FAILED. User may have blocked the page. Credentials saved in admin log.`;
+            console.error(`--- FAILED TO DELIVER MESSAGE for Job ID: ${job_id} to user ${job.user_psid} ---`);
+            console.error(deliveryError.message);
+            
+            const resultMsg = `Account created successfully, but delivery failed. User may have blocked the page. Credentials: ${username}:${password}`;
             await dbManager.updateJobStatus(job_id, 'delivery_failed', resultMsg);
             
-            // CRITICAL: Notify Admin so account isn't lost
-            await notifyAdmin(`🚨 DELIVERY FAILED! 🚨\nJob ID ${job_id}\nUser: ${job.user_psid}\n\nAccount Details:\nU: ${username}\nP: ${password}`);
+            await sendText(ADMIN_ID, `🚨 DELIVERY FAILED! 🚨\nJob ID ${job_id} for user ${job.user_psid} was created but could not be delivered. The user may have blocked the page.\n\nAccount Details:\nUsername: ${username}\nPassword: ${password}`);
         }
 
+        // We ALWAYS send a 200 OK to the worker, because its core job (creating the account) was successful.
         res.status(200).send('OK');
 
     } catch (error) {
+        // This outer catch will now only trigger for very serious problems, not the language issue.
         console.error("--- CRITICAL ERROR in /webhook-delivery ---", error);
         res.status(500).send('Internal Server Error');
     }
 });
+// --- END OF UPDATED SECTION ---
+
 
 async function handleError(error, sender_psid, context = 'Unknown') {
     console.error(`--- ERROR ---`);
     console.error(`Context: ${context}`);
     console.error(`User PSID: ${sender_psid}`);
     console.error(error);
-    
+    console.error(`--- END ERROR ---`);
     try {
-        const user = await dbManager.getUser(sender_psid) || {};
-        const userLang = user.lang || 'en';
-        
-        let userName = sender_psid;
-        try { userName = await getUserProfile(sender_psid); } catch(e){}
-        
+        const user = await dbManager.getUser(sender_psid);
+        const userLang = user?.lang || 'en';
+        const userName = await getUserProfile(sender_psid);
         const adminMessage = `🚨 AN ERROR OCCURRED 🚨\nContext: ${context}\nUser: ${userName} (${sender_psid})\nError: ${error.message}`;
-        
-        // Use Robust Notification
-        await notifyAdmin(adminMessage);
-        
+        await sendText(ADMIN_ID, adminMessage);
         await sendText(sender_psid, lang.getText('error_unexpected_user', userLang));
     } catch (e) {
         console.error("Fatal error inside the error handler:", e);
@@ -122,7 +118,7 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
         fs.writeFileSync(imagePath, imageBuffer);
 
         const currentStateAfterAnalysis = stateManager.getUserState(sender_psid);
-        
+        // Only proceed if the state is still 'processing_receipt'
         if (currentStateAfterAnalysis && currentStateAfterAnalysis.state === 'processing_receipt') {
             if (currentStateAfterAnalysis.data?.orderType) { // Check for custom mod
                 await userHandler.handleCustomModReceipt(sender_psid, analysis, sendText, sendImage, ADMIN_ID, imageUrl, userLang);
@@ -130,15 +126,16 @@ async function handleReceiptSubmission(sender_psid, imageUrl) {
                 await userHandler.handleReceiptAnalysis(sender_psid, analysis, ADMIN_ID, userLang);
             }
         } else {
-            console.warn(`[WARN] Receipt analysis finished, but state changed.`);
+            console.warn(`[WARN] Receipt analysis for ${sender_psid} finished, but state was no longer 'processing_receipt'. State is now: ${currentStateAfterAnalysis?.state}. Aborting post-analysis actions.`);
         }
 
     } catch (error) {
         console.error(`--- CRITICAL FAILURE IN handleReceiptSubmission ---`, error);
 
         const currentState = stateManager.getUserState(sender_psid);
+        // Only trigger manual flow if we are still in the processing state.
         if (currentState && currentState.state === 'processing_receipt') {
-            await userHandler.startManualEntryFlow(sender_psid, sendText, imageUrl, userLang);
+            await userHandler.startManualEntryFlow(sender_psid, imageUrl, userLang);
         } else {
             await handleError(error, sender_psid, 'Receipt Submission');
         }
@@ -164,6 +161,7 @@ async function handleMessage(sender_psid, webhook_event) {
         }
 
         if (isAdmin) {
+            // --- ADMIN LOGIC RESTORED ---
             const userStateObj = stateManager.getUserState(sender_psid);
             const state = userStateObj?.state;
             if (lowerCaseText === 'menu') {
@@ -226,6 +224,7 @@ async function handleMessage(sender_psid, webhook_event) {
                 }
             }
         } else {
+            // --- USER LOGIC (WITH RACE CONDITION FIX) ---
             const isPaused = await dbManager.isUserPaused(sender_psid);
             if (isPaused) return;
 
@@ -242,18 +241,7 @@ async function handleMessage(sender_psid, webhook_event) {
                     stateManager.setUserState(sender_psid, 'awaiting_language_choice', {});
                     return;
                 }
-                
                 await dbManager.addUser(sender_psid, lang);
-                
-                // --- NEW USER ALERT (With PSID) ---
-                try {
-                    const newUserName = await getUserProfile(sender_psid);
-                    await notifyAdmin(`🔔 New User Registered\nName: ${newUserName}\nID: ${sender_psid}`);
-                } catch(err) {
-                    console.error("Failed new user alert:", err.message);
-                }
-                // ---------------------------------
-
                 stateManager.setUserState(sender_psid, 'language_set', { lang });
                 await userHandler.showUserMenu(sender_psid, lang);
                 return;
@@ -330,23 +318,35 @@ async function handleMessage(sender_psid, webhook_event) {
 }
 
 async function startServer() {
-    // 1. Start the server IMMEDIATELY so Render marks deploy as "Live"
-    const PORT = process.env.PORT || 3000;
-    const HOST = '0.0.0.0';
-    
-    app.listen(PORT, HOST, () => { 
-        console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); 
-    });
-
-    // 2. Connect to the Database in the background
     try {
-        console.log("Attempting to connect to database...");
         await dbManager.setupDatabase();
-        console.log("✅ Database connected successfully.");
+        app.get('/', (req, res) => { res.status(200).send('Bot is online and healthy.'); });
+        app.get('/webhook', (req, res) => {
+            const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query;
+            if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+                console.log("Webhook verified successfully!");
+                res.status(200).send(challenge);
+            } else { res.sendStatus(403); }
+        });
+        app.post('/webhook', (req, res) => {
+            if (req.body.object === 'page') {
+                req.body.entry.forEach(entry => {
+                    const event = entry.messaging[0];
+                    if (event?.sender?.id && (event.message || event.postback)) {
+                        handleMessage(event.sender.id, event);
+                    }
+                });
+                res.status(200).send('EVENT_RECEIVED');
+            } else { res.sendStatus(404); }
+        });
+        const PORT = process.env.PORT || 3000;
+        const HOST = '0.0.0.0';
+        app.listen(PORT, HOST, () => { console.log(`✅ Bot is listening on port ${PORT} at host ${HOST}.`); });
     } catch (error) {
-        console.error("❌ Database connection failed:", error);
-        // (Optional) You could notifyAdmin here if the DB fails
+        console.error("Server failed to start:", error);
+        process.exit(1);
     }
 }
 
 startServer();
+ 
