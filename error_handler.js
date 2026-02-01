@@ -1,27 +1,36 @@
 // error_handler.js
-const { sendText, notifyAdmin } = require('./messenger_api.js');
+const { sendText } = require('./messenger_api.js');
 const lang = require('./language_manager.js');
+const { ADMIN_ID } = require('./secrets.js');
 const stateManager = require('./state_manager.js');
 
 /**
  * A centralized function to handle unexpected errors, log them for the admin,
  * and provide a user-friendly message.
+ * @param {Error} error - The error object caught.
+ * @param {string} sender_psid - The PSID of the user who experienced the error.
+ * @param {string} userLang - The language of the user ('en' or 'tl').
+ * @param {string} context - A brief description of where the error occurred (e.g., 'Replacement Request').
  */
 async function handleUserError(error, sender_psid, userLang = 'en', context = 'an unknown process') {
     console.error(`[ERROR] Context: ${context} | User: ${sender_psid} | Message: ${error.message}`);
-    console.error(error.stack); 
+    console.error(error.stack); // Log the full stack trace for debugging
 
-    // Notify the admin with detailed information using Robust Notification
+    // Notify the admin with detailed information
     const adminMessage = `
-⚠️ UNEXPECTED ERROR
-Context: ${context}
-User PSID: ${sender_psid}
-Error: ${error.message}
-Please check the logs.
+        ⚠️ An unexpected error occurred for a user.
+        ---
+        Context: ${context}
+        User PSID: ${sender_psid}
+        Error: ${error.message}
+        ---
+        Please check the logs for the full stack trace.
     `;
-    
-    // This will try 3 times to ensure you get the message
-    await notifyAdmin(adminMessage);
+    try {
+        await sendText(ADMIN_ID, adminMessage);
+    } catch (adminSendError) {
+        console.error("CRITICAL: Failed to send error notification to admin.", adminSendError);
+    }
 
     // Send a generic, user-friendly message to the user
     try {
@@ -35,4 +44,5 @@ Please check the logs.
     stateManager.setUserState(sender_psid, 'language_set', { lang: userLang });
 }
 
-module.exports = { handleUserError };
+module.exports = { handleUserError }; 
+ 
