@@ -1,34 +1,21 @@
-// payment_verifier.js (Updated with Norch Project API)
+// payment_verifier.js (Updated with Robust JSON Extraction)
 const axios = require('axios');
 const sharp = require('sharp');
 const secrets = require('./secrets.js');
 
-// KAIZ_API_KEY is no longer needed for the new API
 const GEMINI_API_KEY = secrets.GEMINI_API_KEY;
-
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=";
 
-const GEMINI_ANALYSIS_PROMPT = `
-You are a highly-attentive payment verification assistant. Your task is to analyze payment receipt screenshots to check for legitimacy.
-INSTRUCTIONS:
-1.  Read all visible text from the receipt, paying close attention to Reference Number and Amount Sent.
-2.  Critically assess the image for signs of digital manipulation.
-3.  Make a final recommendation: APPROVED, FLAGGED, or REJECTED.
-Respond in this exact JSON format. Do not include any other text, comments, or markdown formatting.
-{
-    "extracted_info": {
-        "reference_number": "The 13-digit reference number you read, or 'Not Found'",
-        "amount": "The amount you read, or 'Not Found'",
-        "date": "The date and time you read, or 'Not Found'"
-    },
-    "verification_status": "APPROVED/FLAGGED/REJECTED",
-    "reasoning": "A brief but specific explanation for your decision."
-}
-`;
+// This prompt is designed to force the AI to return ONLY valid JSON
+const ANALYSIS_PROMPT = `
+CRITICAL INSTRUCTION: Analyze the provided GCash receipt. 
+Read the Reference Number (13 digits), the Amount Sent, and the Date.
+Check for signs of digital manipulation (editing).
 
-const PRIMARY_ANALYSIS_PROMPT = `
-CRITICAL INSTRUCTION: Analyze the provided GCash receipt. YOU MUST ONLY reply with a valid JSON object in the specified format. Do not add any introductory text, markdown, or explanations. Your entire response must be the JSON object itself.
+YOU MUST reply ONLY with a valid JSON object. 
+Do not add any introductory text, markdown, or explanations. 
 
+Format:
 {
     "extracted_info": {
         "reference_number": "The 13-digit reference number, or 'Not Found'",
@@ -40,6 +27,9 @@ CRITICAL INSTRUCTION: Analyze the provided GCash receipt. YOU MUST ONLY reply wi
 }
 `;
 
+/**
+ * Resizes the image to save bandwidth and encodes it to Base64 for the Gemini API.
+ */
 async function encodeImage(imageBuffer) {
     try {
         let resizedBuffer = await sharp(imageBuffer)
@@ -54,101 +44,95 @@ async function encodeImage(imageBuffer) {
     }
 }
 
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+/**
+ * Helper to extract JSON from AI text that might contain markdown or conversational filler.
+ */
+function extractJsonFromText(text) {
+    try {
+        // Find the first '{' and the last '}'
+        const jsonMatch = text.match(/({[\s\S]*})/);
+        if (jsonMatch && jsonMatch[0]) {
+            return JSON.parse(jsonMatch[0]);
+        }
+        throw new Error("No JSON object found in response");
+    } catch (e) {
+        console.error("Failed to parse AI response as JSON. Raw text:", text);
+        return null;
+    }
+}
 
-// --- Fallback (Google Gemini Direct) ---
+/**
+ * Primary API: Norch Project (External Gemini Wrapper)
+ */
+async function sendNorchRequest(imageUrl) {
+    console.log("Attempting analysis with Primary API (Norch)...");
+    
+    const encodedPrompt = encodeURIComponent(ANALYSIS_PROMPT);
+    const encodedImageUrl = encodeURIComponent(imageUrl);
+    const API_URL = `https://norch-project.gleeze.com/api/gemini?prompt=${encodedPrompt}&imageurl=${encodedImageUrl}`;
+
+    try {
+        const response = await axios.get(API_URL, { timeout: 45000 });
+        
+        if (response.data && response.data.response) {
+            const parsed = extractJsonFromText(response.data.response);
+            if (parsed && parsed.verification_status) return parsed;
+        }
+        throw new Error("Invalid response format from Norch.");
+    } catch (error) {
+        console.error("Primary API (Norch) request failed:", error.message);
+        throw error; 
+    }
+}
+
+/**
+ * Fallback API: Google Gemini Direct (Vision API)
+ */
 async function sendGeminiRequest(image_b64) {
+    console.log("Attempting analysis with Fallback API (Gemini Direct)...");
     const payload = {
         "contents": [{
             "parts": [
-                { "text": GEMINI_ANALYSIS_PROMPT },
+                { "text": ANALYSIS_PROMPT },
                 { "inline_data": { "mime_type": "image/png", "data": image_b64 } }
             ]
         }]
     };
 
     try {
-        console.log(`Sending request to Gemini Vision API...`);
         const response = await axios.post(`${BASE_URL}${GEMINI_API_KEY}`, payload, { timeout: 60000 });
         
         if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            let content = response.data.candidates[0].content.parts[0].text;
-            content = content.trim().replace('```json', '').replace('```', '');
-            return JSON.parse(content);
-        } else {
-            console.error("Invalid response structure from Gemini API:", response.data);
-            throw new Error("Invalid response structure from Gemini.");
+            const rawText = response.data.candidates[0].content.parts[0].text;
+            const parsed = extractJsonFromText(rawText);
+            if (parsed && parsed.verification_status) return parsed;
         }
+        throw new Error("Invalid response structure from Gemini API.");
     } catch (error) {
-        const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
-        console.error(`Gemini request failed:`, errorMessage);
-        throw new Error(errorMessage);
+        console.error("Gemini Direct request failed:", error.message);
+        throw error;
     }
 }
 
-function createErrorJson(reason) {
-    return {
-        extracted_info: {},
-        verification_status: "FLAGGED",
-        reasoning: `Script Error: ${reason}`
-    };
-}
-
-// --- Primary API (Norch Project) ---
-async function sendNorchRequest(imageUrl) {
-    console.log("Attempting analysis with Primary API (Norch)...");
-    
-    // Updated parameter names based on your cURL example: prompt and imageurl
-    const encodedPrompt = encodeURIComponent(PRIMARY_ANALYSIS_PROMPT);
-    const encodedImageUrl = encodeURIComponent(imageUrl);
-    
-    // New API Endpoint
-    const API_URL = `https://norch-project.gleeze.com/api/gemini?prompt=${encodedPrompt}&imageurl=${encodedImageUrl}`;
-
-    try {
-        const response = await axios.get(API_URL, { timeout: 45000 });
-
-        console.log(`[Norch API] Raw response received.`);
-
-        if (!response.data || !response.data.response) {
-            throw new Error(`Norch-API responded with an error or invalid format.`);
-        }
-
-        const rawText = response.data.response;
-        
-        // Find JSON object within the text response using Regex
-        const jsonMatch = rawText.match(/({[\s\S]*})/);
-        if (jsonMatch && jsonMatch[0]) {
-            const parsedJson = JSON.parse(jsonMatch[0]);
-            if (parsedJson.verification_status && parsedJson.extracted_info) {
-                console.log("Primary API (Norch) analysis successful.");
-                return parsedJson;
-            }
-        }
-        
-        console.error("Raw text from Norch:", rawText);
-        throw new Error("Response from Norch-API did not contain a valid JSON object.");
-
-    } catch (error) {
-        console.error("Primary API (Norch) request failed:", error.message);
-        throw error; // Propagate the error to trigger the fallback
-    }
-}
-
+/**
+ * Main function that tries the Primary API first, then falls back to Gemini Direct.
+ */
 async function analyzeReceiptWithFallback(imageUrl, image_b64) {
     try {
-        // Try Norch (Primary)
-        const primaryResult = await sendNorchRequest(imageUrl);
-        return primaryResult;
+        // 1. Try Norch (Primary)
+        return await sendNorchRequest(imageUrl);
     } catch (primaryError) {
-        console.warn("Primary API (Norch) failed. Proceeding to Fallback API (Gemini)...");
+        console.warn("Primary API failed. Proceeding to Fallback API...");
         try {
-            // Try Google Gemini (Fallback)
-            const fallbackResult = await sendGeminiRequest(image_b64);
-            return fallbackResult;
+            // 2. Try Google Gemini (Fallback)
+            return await sendGeminiRequest(image_b64);
         } catch (fallbackError) {
-            console.error("Fallback API (Gemini) also failed. Analysis could not be completed.");
-            return createErrorJson("Both primary and fallback analysis APIs failed.");
+            console.error("Both analysis APIs failed.");
+            return {
+                extracted_info: {},
+                verification_status: "FLAGGED",
+                reasoning: "System Error: Both AI analysis endpoints are currently unavailable. Manual check required."
+            };
         }
     }
 }
