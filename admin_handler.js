@@ -113,7 +113,8 @@ async function processAdminCreate_Step3_CreateJob(sender_psid, text, sendText) {
     }
     try {
         const password = generatePassword();
-        const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId);
+        // FIXED: Added 'en' as default language parameter
+        const jobId = await db.createAccountCreationJob(sender_psid, email, password, modId, 'en');
         await sendText(sender_psid, `✅ Success! Automation job (ID: ${jobId}) has been started for ${email}.\n\nThe account details will be sent to you here once the worker has finished.`);
     } catch (e) {
         console.error("Error creating admin job:", e);
@@ -140,7 +141,7 @@ async function toggleMaintenanceMode(sender_psid, sendText) {
     try {
         const currentStatus = await db.getMaintenanceStatus();
         const newStatus = !currentStatus;
-        await db.setMaintenanceStatus(newStatus); // CORRECTED
+        await db.setMaintenanceStatus(newStatus); 
         const statusText = newStatus ? '🔴 ON' : '🟢 OFF';
         await sendText(sender_psid, `🔧 Maintenance mode is now ${statusText}.\nTo return to the admin menu, type "Menu".`);
     } catch (e) {
