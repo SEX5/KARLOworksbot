@@ -1,40 +1,30 @@
-// database.js (Corrected with a Singleton Connection Pool)
+// database.js (FIXED & COMPLETED)
 const { Pool } = require('pg');
 const secrets = require('./secrets.js');
 
-let pool; // This will hold our single, shared connection pool
+let pool;
 
-// --- THIS IS THE UPDATED SECTION ---
 function getDb() {
-    // This is the "Singleton" pattern. It ensures we only ever create ONE pool.
     if (!pool) {
         if (!secrets.DATABASE_URL) {
             console.error("FATAL ERROR: DATABASE_URL is not found in secrets.js!");
             process.exit(1);
         }
-        console.log("Creating a new PostgreSQL connection pool...");
         pool = new Pool({
             connectionString: secrets.DATABASE_URL,
-            ssl: {
-                rejectUnauthorized: false
-            },
-            // --- POOLING CONFIGURATION ---
-            // These are good starting values for a bot on a free tier.
-            max: 10, // Max number of connections in the pool
-            idleTimeoutMillis: 30000, // How long a client is allowed to remain idle before being closed
-            connectionTimeoutMillis: 20000, // How long to wait for a connection to be established
+            ssl: { rejectUnauthorized: false },
+            max: 10,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 20000,
         });
 
-        // Optional but recommended: Add an error listener to the pool
-        pool.on('error', (err, client) => {
+        pool.on('error', (err) => {
             console.error('Unexpected error on idle PostgreSQL client', err);
-            process.exit(-1); // Exit the process to allow for a clean restart
+            process.exit(-1);
         });
     }
     return pool;
 }
-// --- END OF UPDATED SECTION ---
-
 
 async function setupDatabase() {
     const client = await getDb().connect();
@@ -45,21 +35,53 @@ async function setupDatabase() {
         await client.query(`CREATE TABLE IF NOT EXISTS mods (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, description TEXT, price REAL DEFAULT 0, image_url TEXT, default_claims_max INTEGER DEFAULT 3, x_coordinate REAL, y_coordinate REAL)`);
         await client.query(`CREATE TABLE IF NOT EXISTS accounts (id SERIAL PRIMARY KEY, mod_id INTEGER NOT NULL, username TEXT NOT NULL, password TEXT NOT NULL, is_available BOOLEAN DEFAULT TRUE, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
         await client.query(`CREATE TABLE IF NOT EXISTS "references" (ref_number TEXT PRIMARY KEY, user_id TEXT NOT NULL, mod_id INTEGER NOT NULL, timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, claims_used INTEGER DEFAULT 0, claims_max INTEGER DEFAULT 1, last_replacement_timestamp TIMESTAMPTZ, FOREIGN KEY (mod_id) REFERENCES mods(id))`);
-        await client.query(`CREATE TABLE IF NOT EXISTS creation_jobs ( job_id SERIAL PRIMARY KEY, user_psid TEXT NOT NULL, email TEXT NOT NULL, password TEXT NOT NULL, mod_id INTEGER NOT NULL, status VARCHAR(20) DEFAULT 'pending', result_message TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP )`);
+        // Added lang column to creation_jobs
+        await client.query(`CREATE TABLE IF NOT EXISTS creation_jobs ( job_id SERIAL PRIMARY KEY, user_psid TEXT NOT NULL, email TEXT NOT NULL, password TEXT NOT NULL, mod_id INTEGER NOT NULL, lang TEXT DEFAULT 'en', status VARCHAR(20) DEFAULT 'pending', result_message TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP )`);
         await client.query(`CREATE TABLE IF NOT EXISTS paused_users (user_id TEXT PRIMARY KEY)`);
         await client.query(`CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)`);
         await client.query(`INSERT INTO app_settings (key, value) VALUES ('maintenance_mode', 'false') ON CONFLICT (key) DO NOTHING`);
         await client.query(`CREATE TABLE IF NOT EXISTS users (psid TEXT PRIMARY KEY, lang TEXT DEFAULT 'en')`);
         await client.query('COMMIT');
+        
+        // Verification / Migration queries
+        try { await client.query('ALTER TABLE admins ADD COLUMN is_online BOOLEAN DEFAULT FALSE'); } catch (e) {}
+        try { await client.query('ALTER TABLE mods ADD COLUMN x_coordinate REAL'); await client.query('ALTER TABLE mods ADD COLUMN y_coordinate REAL'); } catch (e) {}
+        try { await client.query('ALTER TABLE "references" ADD COLUMN last_replacement_timestamp TIMESTAMPTZ'); } catch (e) {}
+        try { await client.query('ALTER TABLE users ADD COLUMN lang TEXT DEFAULT \'en\''); } catch (e) {}
+        try { await client.query('ALTER TABLE creation_jobs ADD COLUMN lang TEXT DEFAULT \'en\''); } catch (e) {}
+        
         console.log('Database tables are ready on Supabase.');
-        try { await client.query('ALTER TABLE admins ADD COLUMN is_online BOOLEAN DEFAULT FALSE'); console.log('Verified "is_online" column in admins table.'); } catch (e) { if (e.code !== '42701') { throw e; } }
-        try { await client.query('ALTER TABLE mods ADD COLUMN x_coordinate REAL'); await client.query('ALTER TABLE mods ADD COLUMN y_coordinate REAL'); console.log('Verified coordinate columns in mods table.'); } catch (e) { if (e.code !== '42701') { throw e; } }
-        try { await client.query('ALTER TABLE "references" ADD COLUMN last_replacement_timestamp TIMESTAMPTZ'); console.log('Verified "last_replacement_timestamp" column in references table.'); } catch (e) { if (e.code !== '42701') { throw e; } }
-        try { await client.query('ALTER TABLE users ADD COLUMN lang TEXT DEFAULT \'en\''); console.log('Verified "lang" column in users table.'); } catch (e) { if (e.code !== '42701') { throw e; } }
-    } catch (error) { await client.query('ROLLBACK'); console.error('FATAL: Could not set up Supabase database:', error.message); throw error; } finally { client.release(); }
+    } catch (error) { 
+        await client.query('ROLLBACK'); 
+        console.error('FATAL: Could not set up database:', error.message); 
+        throw error; 
+    } finally { 
+        client.release(); 
+    }
 }
 
-// --- Functions for Worker Manager & Webhook ---
+// --- New/Fixed Helper Functions ---
+
+async function getUser(psid) {
+    const res = await getDb().query('SELECT * FROM users WHERE psid = $1', [psid]);
+    return res.rows[0] || null;
+}
+
+async function getActionableJobs() {
+    // Only fetch jobs that are finished (completed/failed) but not yet handled by poller
+    const query = `SELECT * FROM creation_jobs WHERE status IN ('completed', 'failed') ORDER BY created_at ASC`;
+    const res = await getDb().query(query);
+    return res.rows;
+}
+
+async function getStalePendingJobs(minutes) {
+    const query = `SELECT * FROM creation_jobs WHERE status = 'pending' AND created_at < NOW() - ($1 || ' minutes')::interval`;
+    const res = await getDb().query(query, [minutes]);
+    return res.rows;
+}
+
+// --- Worker/Poller Functions ---
+
 async function getPendingJobsForWorker() {
     const query = `SELECT * FROM creation_jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 5`;
     const res = await getDb().query(query);
@@ -77,14 +99,14 @@ async function updateJobStatus(jobId, newStatus, resultMessage = null) {
     await getDb().query(query, [newStatus, resultMessage, jobId]);
 }
 
-async function createAccountCreationJob(user_psid, email, password, modId) {
-    const query = 'INSERT INTO creation_jobs (user_psid, email, password, mod_id, status) VALUES ($1, $2, $3, $4, \'pending\') RETURNING job_id';
-    const res = await getDb().query(query, [user_psid, email, password, modId]);
+async function createAccountCreationJob(user_psid, email, password, modId, lang = 'en') {
+    const query = 'INSERT INTO creation_jobs (user_psid, email, password, mod_id, lang, status) VALUES ($1, $2, $3, $4, $5, \'pending\') RETURNING job_id';
+    const res = await getDb().query(query, [user_psid, email, password, modId, lang]);
     return res.rows[0].job_id;
 }
 
+// --- Admin/User Logic Functions ---
 
-// --- All Other Functions Needed by Main Bot ---
 async function getMaintenanceStatus() { const res = await getDb().query("SELECT value FROM app_settings WHERE key = 'maintenance_mode'"); return res.rows[0]?.value === 'true'; }
 async function setMaintenanceStatus(isMaintenance) { await getDb().query("UPDATE app_settings SET value = $1 WHERE key = 'maintenance_mode'", [isMaintenance]); }
 async function addUser(psid, lang = 'en') { await getDb().query('INSERT INTO users (psid, lang) VALUES ($1, $2) ON CONFLICT (psid) DO UPDATE SET lang = EXCLUDED.lang', [psid, lang]); }
@@ -93,14 +115,7 @@ async function deleteAccountsByModId(modId) { const res = await getDb().query('D
 async function getSalesStatistics(period) {
     const interval = { 'daily': '1 day', 'weekly': '7 days', 'monthly': '30 days' }[period];
     if (!interval) throw new Error('Invalid period for statistics.');
-    const query = `
-        SELECT m.name, COUNT(r.ref_number) as sales_count, SUM(m.price) as total_revenue
-        FROM "references" r
-        JOIN mods m ON r.mod_id = m.id
-        WHERE r.timestamp >= NOW() - INTERVAL '${interval}'
-        GROUP BY m.name
-        ORDER BY total_revenue DESC;
-    `;
+    const query = `SELECT m.name, COUNT(r.ref_number) as sales_count, SUM(m.price) as total_revenue FROM "references" r JOIN mods m ON r.mod_id = m.id WHERE r.timestamp >= NOW() - INTERVAL '${interval}' GROUP BY m.name ORDER BY total_revenue DESC;`;
     const res = await getDb().query(query);
     return res.rows;
 }
@@ -117,7 +132,7 @@ async function getAllReferences() { const res = await getDb().query('SELECT r.re
 async function addBulkAccounts(modId, accounts) { const client = await getDb().connect(); try { await client.query('BEGIN'); for (const acc of accounts) { await client.query('INSERT INTO accounts (mod_id, username, password) VALUES ($1, $2, $3)', [modId, acc.username, acc.password]); } await client.query('COMMIT'); } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); } }
 async function updateModDetails(modId, details) { const fields = Object.keys(details).map((k, i) => `${k} = $${i + 1}`).join(', '); const values = Object.values(details); await getDb().query(`UPDATE mods SET ${fields} WHERE id = $${values.length + 1}`, [...values, modId]); }
 async function updateReferenceMod(ref, newModId) { await getDb().query('UPDATE "references" SET mod_id = $1 WHERE ref_number = $2', [newModId, ref]); }
-async function addReference(ref, userId = 'ADMIN_ADDED', modId) { const mod = await getModById(modId); if (!mod) { throw new Error(`Mod with ID ${modId} not found when trying to add reference.`); } const claimsMax = mod.default_claims_max || 1;  const res = await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId, claimsMax]); if (res.rowCount === 0) { throw new Error('Duplicate reference number'); } return claimsMax; }
+async function addReference(ref, userId = 'ADMIN_ADDED', modId) { const mod = await getModById(modId); if (!mod) { throw new Error(`Mod with ID ${modId} not found.`); } const claimsMax = mod.default_claims_max || 1;  const res = await getDb().query('INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING', [ref, userId, modId, claimsMax]); if (res.rowCount === 0) { throw new Error('Duplicate reference number'); } return claimsMax; }
 async function getMods() { const res = await getDb().query('SELECT m.id, m.name, m.description, m.price, m.image_url, m.default_claims_max, (SELECT COUNT(*) FROM accounts WHERE mod_id = m.id AND is_available = TRUE) as stock FROM mods m ORDER BY m.id'); return res.rows; }
 async function getModById(modId) { const res = await getDb().query('SELECT * FROM mods WHERE id = $1', [modId]); return res.rows[0] || null; }
 async function getReference(refNumber) { const res = await getDb().query('SELECT r.*, m.name as mod_name FROM "references" r JOIN mods m ON r.mod_id = m.id WHERE r.ref_number = $1', [refNumber]); return res.rows[0] || null; }
@@ -129,9 +144,11 @@ async function getModsByPrice(price) { const res = await getDb().query('SELECT *
 async function addBulkReferences(modId, refNumbers) { const client = await getDb().connect(); const mod = await getModById(modId); if (!mod) { throw new Error(`Mod with ID ${modId} not found.`); } const claimsMax = mod.default_claims_max || 1; let successfulAdds = 0; const duplicates = []; const invalids = []; try { await client.query('BEGIN'); for (const ref of refNumbers) { if (!/^\d{13}$/.test(ref)) { invalids.push(ref); continue; } const res = await client.query( 'INSERT INTO "references" (ref_number, user_id, mod_id, claims_max) VALUES ($1, $2, $3, $4) ON CONFLICT (ref_number) DO NOTHING', [ref, 'ADMIN_ADDED', modId, claimsMax] ); if (res.rowCount > 0) { successfulAdds++; } else { duplicates.push(ref); } } await client.query('COMMIT'); } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); } return { successfulAdds, duplicates, invalids }; }
 async function updateReferenceClaims(refNumber, claimsUsed, claimsMax) { const res = await getDb().query('UPDATE "references" SET claims_used = $1, claims_max = $2 WHERE ref_number = $3', [claimsUsed, claimsMax, refNumber]); return res.rowCount; }
 
-
 module.exports = {
     setupDatabase,
+    getUser,
+    getActionableJobs,
+    getStalePendingJobs,
     getPendingJobsForWorker,
     getJobById,
     updateJobStatus,
